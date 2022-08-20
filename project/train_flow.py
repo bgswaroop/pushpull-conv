@@ -45,6 +45,8 @@ def parse_args():
 
     parser.add_argument('--learning_rate', type=float, default=3e-4)
     parser.add_argument('--weight_decay', type=float, default=0.004)  # regularization
+    parser.add_argument('--hash_length', type=int, default=48)
+    parser.add_argument('--binary_hash_regularization_weight', type=float, default=0.01)
 
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
@@ -94,34 +96,44 @@ def train_on_clean_images():
     # ------------
     logger = TensorBoardLogger(save_dir=args.logs_dir, name=args.experiment_name, default_hp_metric=False,
                                version=args.logs_version)
-    ckpt_callback1 = ModelCheckpoint(mode='min', monitor='loss_val', filename='{epoch}-{loss_val:.2f}',
-                                    save_last=True)  # fixme: populate dir_path when continue training is set
-    ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top1_acc_val', filename='{epoch}-{top1_acc_val:.2f}')
-    ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top5_acc_val', filename='{epoch}-{top5_acc_val:.2f}')
+    # fixme: populate dir_path when continue training is set
+    ckpt_callback1 = ModelCheckpoint(mode='min', monitor='loss_val', filename='{epoch}-{loss_val:.2f}', save_last=True)
+    if args.task == 'classification':
+        ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top1_acc_val', filename='{epoch}-{top1_acc_val:.2f}')
+        ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top5_acc_val', filename='{epoch}-{top5_acc_val:.2f}')
+    elif args.task == 'retrieval':
+        ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
+        ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')
+    else:
+        raise ValueError('Invalid task!')
     lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
     trainer = pl.Trainer.from_argparse_args(args,
                                             logger=logger,
                                             callbacks=[ckpt_callback1, ckpt_callback2, ckpt_callback3,
                                                        lr_monitor_callback],
                                             resume_from_checkpoint=args.ckpt)
-    trainer.fit(model, train_loader, val_dataloaders=[val_loader])
 
-    # ------------
-    # testing
-    # ------------
-    # Optionally add ckpt_path to trainer.predict()
-    train_predictions = trainer.predict(model=model, dataloaders=train_loader)
-    test_predictions = trainer.predict(model=model, dataloaders=test_loader)
+    if args.task == 'classification':
+        trainer.fit(model, train_loader, val_dataloaders=[val_loader])
+    elif args.task == 'retrieval':
+        trainer.fit(model, train_loader, val_dataloaders=[train_loader, val_loader])
 
-    y_hat = torch.concat([x['predictions'] for x in train_predictions])
-    y = torch.concat([x['ground_truths'] for x in train_predictions])
-    acc1 = accuracy(y_hat, y)
-    print(f'Training  set accuracy: {acc1}')
-
-    y_hat = torch.concat([x['predictions'] for x in test_predictions])
-    y = torch.concat([x['ground_truths'] for x in test_predictions])
-    acc1 = accuracy(y_hat, y)
-    print(f'Test  set accuracy: {acc1}')
+    # # ------------
+    # # testing
+    # # ------------
+    # # Optionally add ckpt_path to trainer.predict()
+    # train_predictions = trainer.predict(model=model, dataloaders=train_loader)
+    # test_predictions = trainer.predict(model=model, dataloaders=test_loader)
+    #
+    # y_hat = torch.concat([x['predictions'] for x in train_predictions])
+    # y = torch.concat([x['ground_truths'] for x in train_predictions])
+    # acc1 = accuracy(y_hat, y)
+    # print(f'Training  set accuracy: {acc1}')
+    #
+    # y_hat = torch.concat([x['predictions'] for x in test_predictions])
+    # y = torch.concat([x['ground_truths'] for x in test_predictions])
+    # acc1 = accuracy(y_hat, y)
+    # print(f'Test  set accuracy: {acc1}')
 
 
 if __name__ == '__main__':

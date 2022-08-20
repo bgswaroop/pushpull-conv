@@ -4,26 +4,26 @@ from typing import Any
 import pandas as pd
 import pytorch_lightning as pl
 import torch
-import torch.nn.functional as F
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
-from torchmetrics.functional import accuracy
 
+from ..utils import DSHSamplingLoss, compute_map_score
 from ..utils.push_pull_unit import PushPullConv2DUnit
 
 
 class BaseNet(pl.LightningModule):
     def __init__(self):
         super(BaseNet, self).__init__()
+        self.loss = DSHSamplingLoss(
+            batch_size=self.hparams.batch_size,
+            margin=self.hparams.hash_length * 2,
+            alpha=self.hparams.binary_hash_regularization_weight
+        )
 
     def training_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
-        loss = F.cross_entropy(y_hat, y)
+        loss = self.loss(y_hat, y)
         self.log('loss', {'train': loss}, on_epoch=True, on_step=False)
-        acc1 = accuracy(y_hat, y, top_k=1)
-        acc5 = accuracy(y_hat, y, top_k=5)
-        self.log('top1-accuracy', {'train': acc1}, on_epoch=True, on_step=False)
-        self.log('top5-accuracy', {'train': acc5}, on_epoch=True, on_step=False)
         return loss
 
     def training_epoch_end(self, outputs: EPOCH_OUTPUT) -> None:
@@ -58,22 +58,42 @@ class BaseNet(pl.LightningModule):
     def validation_step(self, batch, batch_idx, dataloader_idx: int = 0):
         x, y = batch
         y_hat = self(x)
-        loss = F.cross_entropy(y_hat, y)
-        self.log('loss', {'val': loss})
-        self.log('loss_val', loss, add_dataloader_idx=False, logger=False)
-        acc1 = accuracy(y_hat, y, top_k=1)
-        acc5 = accuracy(y_hat, y, top_k=5)
-        self.log('top1-accuracy', {'val': acc1}, on_epoch=True, on_step=False)
-        self.log('top5-accuracy', {'val': acc5}, on_epoch=True, on_step=False)
-        self.log('top1_acc_val', acc1, add_dataloader_idx=False, logger=False)
-        self.log('top5_acc_val', acc5, add_dataloader_idx=False, logger=False)
-        return loss
+        hash_code = torch.sign(y_hat)
+        loss = self.loss(y_hat, y)
+
+        dataloader_type = ['train', 'val', 'test'][dataloader_idx]
+        if dataloader_type == 'val':
+            self.log('loss', {dataloader_type: loss}, add_dataloader_idx=False, on_epoch=True, on_step=False)
+            self.log(f'loss_{dataloader_type}', loss, add_dataloader_idx=False, logger=False)
+
+        return {f'{dataloader_type}_data': {'predictions': hash_code, 'ground_truths': y}}
+
+    def validation_epoch_end(self, outputs) -> None:
+        train_hash = torch.concat([x['train_data']['predictions'] for x in outputs[0]])
+        train_gt = torch.concat([x['train_data']['ground_truths'] for x in outputs[0]])
+        train_score = compute_map_score(train_hash, train_gt, train_hash, train_gt, self.device)
+
+        val_hash = torch.concat([x['val_data']['predictions'] for x in outputs[1]])
+        val_gt = torch.concat([x['val_data']['ground_truths'] for x in outputs[1]])
+        val_score = compute_map_score(train_hash, train_gt, val_hash, val_gt, self.device)
+
+        if len(outputs) == 3:  # train + val + test
+            test_hash = torch.concat([x['test_data']['predictions'] for x in outputs[2]])
+            test_gt = torch.concat([x['test_data']['ground_truths'] for x in outputs[2]])
+            test_score = compute_map_score(train_hash, train_gt, test_hash, test_gt, self.device)
+
+        for key in train_score.keys():
+            self.log(f'{key}_mAP', {'train': train_score[key], 'val': val_score[key]})
+            if key == 'top50':
+                self.log(f'top50_mAP_val', val_score[key], logger=False)
+            if key == 'top200':
+                self.log(f'top200_mAP_val', val_score[key], logger=False)
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         x, y = batch
         y_hat = self(x)
-        y_hat = torch.argmax(F.softmax(y_hat, dim=1), dim=1)
-        return {'predictions': y_hat, 'ground_truths': y}
+        hash_code = torch.sign(y_hat)
+        return {'hash_codes': hash_code, 'ground_truths': y}
 
     def configure_optimizers(self):
 
@@ -81,6 +101,10 @@ class BaseNet(pl.LightningModule):
                                     lr=self.hparams.learning_rate,
                                     momentum=0.9,
                                     weight_decay=self.hparams.weight_decay)
+
+        # optimizer = torch.optim.Adam(self.parameters(),
+        #                              lr=self.hparams.learning_rate,
+        #                              weight_decay=self.hparams.weight_decay)
 
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True,
                                                                mode='min', factor=0.1, patience=5)

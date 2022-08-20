@@ -217,12 +217,12 @@ class ImageNet:
 
     def get_validation_dataloader(self, batch_size=None, num_workers=None):
         self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset_200)
-        val_loader = DataLoader(self.dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+        val_loader = DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
         return val_loader
 
     def get_test_dataloader(self, batch_size, num_workers):
         self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset_200)
-        test_loader = DataLoader(self.dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+        test_loader = DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
         return test_loader
 
     def get_num_classes(self):

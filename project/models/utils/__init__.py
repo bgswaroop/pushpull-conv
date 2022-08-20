@@ -1,6 +1,6 @@
-from .loss_function import dsh_loss
+from .loss_function import DSHSamplingLoss
 from .metrics import compute_map_score
 
 __all__ = (
-    'dsh_loss', 'compute_map_score'
+    'DSHSamplingLoss', 'compute_map_score'
 )
