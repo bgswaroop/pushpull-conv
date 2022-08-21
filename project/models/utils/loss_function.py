@@ -35,20 +35,26 @@ class DSHSamplingLoss(torch.nn.Module):
             comb = torch.tensor(list(combinations(range(len(ground_truth_classes)), 2)))
         targets = (ground_truth_classes[comb[:, 0]] == ground_truth_classes[comb[:, 1]]).int()
 
-        same_class_indices = torch.where(targets == 1)[0].float()
-        diff_class_indices = torch.where(targets == 0)[0].float()
+        same_class_indices = torch.where(targets == 1)[0].long()
+        diff_class_indices = torch.where(targets == 0)[0].long()
         sampling_size = math.floor(len(same_class_indices) * 2 / 3)
-        self._num_experiments = math.ceil((len(comb) / (2 * sampling_size)) * (3 / 2))
 
         loss = torch.tensor(0., requires_grad=True, device=predictions.device)
-        if sampling_size <= 0:
+        if sampling_size <= 0 or len(diff_class_indices) == 0:
             return loss
 
-        for _ in range(self._num_experiments):
+        # Determine the parameters for sampling
+        # self._num_experiments = math.ceil((len(comb) / (2 * sampling_size)) * (3 / 2))
+        sampled_same_class_indices = same_class_indices[torch.multinomial(
+            torch.ones(self._num_experiments, len(same_class_indices)), sampling_size
+        )]
+        sampled_diff_class_indices = diff_class_indices[torch.multinomial(
+            torch.ones(self._num_experiments, len(diff_class_indices)), sampling_size * self._sampling_ratio
+        )]
+
+        for exp_num in range(self._num_experiments):
             # sample a mini-batch
-            ind1 = torch.multinomial(same_class_indices, sampling_size, replacement=True)
-            ind2 = torch.multinomial(diff_class_indices, sampling_size * self._sampling_ratio, replacement=True)
-            sampled_indices = torch.cat((ind1, ind2))
+            sampled_indices = torch.cat((sampled_same_class_indices[exp_num], sampled_diff_class_indices[exp_num]))
             h1 = predictions[comb[sampled_indices, 0]]
             h2 = predictions[comb[sampled_indices, 1]]
             t = targets[sampled_indices]
@@ -82,5 +88,3 @@ class DSHSamplingLoss(torch.nn.Module):
 
         minibatch_loss = torch.mean(l1 + l2 + l3)
         return minibatch_loss
-
-
