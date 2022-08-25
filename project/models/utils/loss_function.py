@@ -1,4 +1,5 @@
 import math
+import random
 from itertools import combinations
 
 import torch
@@ -88,3 +89,99 @@ class DSHSamplingLoss(torch.nn.Module):
 
         minibatch_loss = torch.mean(l1 + l2 + l3)
         return minibatch_loss
+
+
+# Code adapted from - https://github.com/swuxyj/DeepHash-pytorch/blob/993909f4e0e9f599b503ce5c380e2fcc7c6824f7/CSQ.py
+class CSQLoss(torch.nn.Module):
+    def __init__(self, num_classes, hash_length, quantization_weight, device='cuda:0'):
+        super(CSQLoss, self).__init__()
+        self.hash_targets = self._get_hash_targets(num_classes, hash_length).to(device)
+        self.criterion = torch.nn.BCELoss()
+        self.quantization_weight = quantization_weight  # lambda
+
+    def forward(self, y_hat, y):
+        y_hat = y_hat.tanh()
+        hash_center = self.hash_targets[y]
+        center_loss = self.criterion(0.5 * (y_hat + 1), 0.5 * (hash_center + 1))
+
+        Q_loss = (y_hat.abs() - 1).pow(2).mean()
+        return center_loss + self.quantization_weight * Q_loss
+
+    def _get_hash_targets(self, num_classes, hash_length):
+        H_K = self._hadamard(hash_length)
+        H_2K = torch.cat((H_K, -H_K), dim=0)
+        hash_targets = H_2K[:num_classes].float()
+
+        if H_2K.shape[0] == num_classes:
+            return hash_targets
+
+        hash_targets.resize_(num_classes, hash_length)
+        for _ in range(20):
+            for index in range(H_2K.shape[0], num_classes):
+                ones = torch.ones(hash_length)
+                # Bernoulli distribution
+                sa = random.sample(list(range(hash_length)), hash_length // 2)
+                ones[sa] = -1
+                hash_targets[index] = ones
+            # to find average/min pairwise distance
+            c = []
+            for i in range(num_classes):
+                for j in range(i + 1, num_classes):
+                    TF = sum(hash_targets[i] != hash_targets[j])
+                    c.append(TF)
+            c = torch.tensor(c).float()
+
+            # choose min(c) in the range of K/4 to K/3
+            # see in https://github.com/yuanli2333/Hadamard-Matrix-for-hashing/issues/1
+            # but, it is hard when bit is small
+            if torch.min(c) > hash_length / 4 and torch.mean(c) >= hash_length / 2:
+                print(torch.min(c), torch.mean(c))
+                break
+        return hash_targets
+
+    @staticmethod
+    def _hadamard(n, dtype=int):
+        """
+        Construct a Hadamard matrix.
+
+        Constructs an n-by-n Hadamard matrix, using Sylvester's
+        construction. `n` must be a power of 2.
+
+        Parameters
+        ----------
+        n : int
+            The order of the matrix. `n` must be a power of 2.
+        dtype : dtype, optional
+            The data type of the array to be constructed.
+
+        Returns
+        -------
+        H : (n, n) ndarray
+            The Hadamard matrix.
+
+        Examples
+        --------
+        >>> CSQLoss.hadamard(2, dtype=complex)
+        array([[ 1.+0.j,  1.+0.j],
+               [ 1.+0.j, -1.-0.j]])
+        >>> CSQLoss.hadamard(4)
+        array([[ 1,  1,  1,  1],
+               [ 1, -1,  1, -1],
+               [ 1,  1, -1, -1],
+               [ 1, -1, -1,  1]])
+
+        """
+        if n < 1:
+            lg2 = 0
+        else:
+            lg2 = int(math.log(n, 2))
+        if 2 ** lg2 != n:
+            raise ValueError("n must be an positive integer and a power of 2")
+
+        H = torch.tensor([[1]], dtype=dtype)
+
+        # Sylvester's construction
+        for _ in range(0, lg2):
+            H = torch.vstack((torch.hstack((H, H)), torch.hstack((H, -H))))
+
+        return H

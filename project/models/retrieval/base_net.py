@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 import torch
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 
-from ..utils import DSHSamplingLoss, compute_map_score
+from ..utils import DSHSamplingLoss, CSQLoss, compute_map_score
 from ..utils.push_pull_unit import PushPullConv2DUnit
 
 
@@ -16,8 +16,13 @@ class BaseNet(pl.LightningModule):
         self.loss = DSHSamplingLoss(
             batch_size=self.hparams.batch_size,
             margin=self.hparams.hash_length * 2,
-            alpha=self.hparams.binary_hash_regularization_weight
+            alpha=self.hparams.quantization_weight
         )
+        # self.loss = CSQLoss(
+        #     num_classes=self.hparams.num_classes,
+        #     hash_length=self.hparams.hash_length,
+        #     quantization_weight=self.hparams.quantization_weight,
+        # )
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -32,11 +37,11 @@ class BaseNet(pl.LightningModule):
         elif hasattr(self, 'conv1'):
             first_layer = self.conv1
         else:
-            print('Warning - Push Pull layer not found. Skipping saving the logs')
+            print('\nWarning - Push Pull layer not found. Skipping saving the logs')
             return
 
         if type(first_layer) != PushPullConv2DUnit:
-            print('Warning - Push Pull layer not found. Skipping saving the logs')
+            print('\nWarning - Push Pull layer not found. Skipping saving the logs')
             return
 
         Path(self.logger.log_dir).mkdir(exist_ok=True, parents=True)
@@ -71,7 +76,7 @@ class BaseNet(pl.LightningModule):
     def validation_epoch_end(self, outputs) -> None:
         train_hash = torch.concat([x['train_data']['predictions'] for x in outputs[0]])
         train_gt = torch.concat([x['train_data']['ground_truths'] for x in outputs[0]])
-        train_score = compute_map_score(train_hash, train_gt, train_hash, train_gt, self.device)
+        # train_score = compute_map_score(train_hash, train_gt, train_hash, train_gt, self.device)
 
         val_hash = torch.concat([x['val_data']['predictions'] for x in outputs[1]])
         val_gt = torch.concat([x['val_data']['ground_truths'] for x in outputs[1]])
@@ -82,8 +87,9 @@ class BaseNet(pl.LightningModule):
             test_gt = torch.concat([x['test_data']['ground_truths'] for x in outputs[2]])
             test_score = compute_map_score(train_hash, train_gt, test_hash, test_gt, self.device)
 
-        for key in train_score.keys():
-            self.log(f'{key}_mAP', {'train': train_score[key], 'val': val_score[key]})
+        for key in val_score.keys():
+            # self.log(f'{key}_mAP', {'train': train_score[key], 'val': val_score[key]})
+            self.log(f'{key}_mAP', {'val': val_score[key]})
             if key == 'top50':
                 self.log(f'top50_mAP_val', val_score[key], logger=False)
             if key == 'top200':

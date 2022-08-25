@@ -32,11 +32,11 @@ class BaseNet(pl.LightningModule):
         elif hasattr(self, 'conv1'):
             first_layer = self.conv1
         else:
-            print('Warning - Push Pull layer not found. Skipping saving the logs')
+            print('\nWarning - Push Pull layer not found. Skipping saving the logs')
             return
 
         if type(first_layer) != PushPullConv2DUnit:
-            print('Warning - Push Pull layer not found. Skipping saving the logs')
+            print('\nWarning - Push Pull layer not found. Skipping saving the logs')
             return
 
         Path(self.logger.log_dir).mkdir(exist_ok=True, parents=True)

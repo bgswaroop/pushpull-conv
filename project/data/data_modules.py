@@ -122,11 +122,11 @@ class _ImageNetBase(Dataset):
             root: str,
             split: str,
             img_size: int,
-            use_subset_200: bool,
+            use_subset: bool,
     ) -> None:
         self.root = Path(root)
         self.split = split
-        self.use_subset_200 = use_subset_200
+        self.use_subset = use_subset
 
         _normalize = transforms.Normalize((0.485, 0.456, 0.406), (00.229, 0.224, 0.225))
         self._transform_train = transforms.Compose([
@@ -170,8 +170,8 @@ class _ImageNetBase(Dataset):
         else:
             raise ValueError('Invalid split')
 
-        if self.use_subset_200:
-            self._extract_subset_200()
+        if self.use_subset:
+            self._extract_subset(num_classes=self.use_subset)
 
         # Relabel the samples
         relabel_map = {x: idx for idx, x in enumerate(sorted(np.unique(self.labels)))}
@@ -179,8 +179,9 @@ class _ImageNetBase(Dataset):
         self.labels_txt_to_num = {self.labels_num_to_txt[old_id]: new_id for old_id, new_id in relabel_map.items()}
         self.labels_num_to_txt = {num: text for text, num in self.labels_txt_to_num.items()}
 
-    def _extract_subset_200(self):
-        with open(Path(__file__).parent.joinpath('imagenet_c/tiny_imagenet_classes.json')) as f:
+    def _extract_subset(self, num_classes):
+        assert num_classes in {100, 200}, 'Invalid number of subset classes!'
+        with open(Path(__file__).parent.joinpath(f'imagenet_c/imagenet_{num_classes}_classes.json')) as f:
             subset_class_names = sorted(json.load(f))
             subset_class_numbers = set([self.labels_txt_to_num[x] for x in subset_class_names])
         data, labels = [], []
@@ -205,24 +206,27 @@ class _ImageNetBase(Dataset):
 
 
 class ImageNet:
-    def __init__(self, root: str, img_size: int, use_subset_200=False):
+    def __init__(self, root: str, img_size: int, use_subset=None):
         self.root = root
         self.img_size = img_size
-        self.use_subset_200 = use_subset_200
+        self.use_subset = use_subset
 
     def get_train_dataloader(self, batch_size, num_workers):
-        self.dataset = _ImageNetBase(self.root, 'train', self.img_size, self.use_subset_200)
-        train_loader = DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+        self.dataset = _ImageNetBase(self.root, 'train', self.img_size, self.use_subset)
+        train_loader = DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers,
+                                  prefetch_factor=8, pin_memory=True)
         return train_loader
 
     def get_validation_dataloader(self, batch_size=None, num_workers=None):
-        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset_200)
-        val_loader = DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset)
+        val_loader = DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers,
+                                prefetch_factor=8, pin_memory=True)
         return val_loader
 
     def get_test_dataloader(self, batch_size, num_workers):
-        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset_200)
-        test_loader = DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset)
+        test_loader = DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers,
+                                 prefetch_factor=8, pin_memory=True)
         return test_loader
 
     def get_num_classes(self):
@@ -230,12 +234,12 @@ class ImageNet:
 
 
 class ImageNetC:
-    def __init__(self, root_dir, use_subset_200=False):
+    def __init__(self, root_dir, use_subset=None):
         super(ImageNetC, self).__init__()
 
         # full dataset
         self.root = Path(root_dir)
-        self.use_subset_200 = use_subset_200
+        self.use_subset = use_subset
 
         # corruption types
         self._all_corruption_types = set([x.stem for x in sorted(self.root.glob('*')) if x.stem != 'labels'])
@@ -277,11 +281,12 @@ class ImageNetC:
         self.labels_text_to_numeric = {x.stem: idx for idx, x in enumerate(sorted(dataset.glob('*')))}
         self.labels = [self.labels_text_to_numeric[x.parent.name] for x in self.images]
 
-        if self.use_subset_200:
-            self._extract_subset_200()
+        if self.use_subset:
+            self._extract_subset(num_classes=self.use_subset)
 
-    def _extract_subset_200(self):
-        with open(Path(__file__).parent.joinpath('imagenet_c/tiny_imagenet_classes.json')) as f:
+    def _extract_subset(self, num_classes):
+        assert num_classes in {100, 200}, "Invalid number of classes!"
+        with open(Path(__file__).parent.joinpath(f'imagenet_c/imagenet_{num_classes}_classes.json')) as f:
             subset_class_names = sorted(json.load(f))
             subset_class_numbers = set([self.labels_text_to_numeric[x] for x in subset_class_names])
         images, labels = [], []

@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=rn18_in200
-#SBATCH --time=24:00:00
+#SBATCH --job-name=rn50_in200
+#SBATCH --time=2:00:00
 #SBATCH --mem=120g
 #SBATCH --gres=gpu:v100:1
-#SBATCH --partition=gpu
+#SBATCH --partition=gpushort
 #SBATCH --cpus-per-task=12
 #SBATCH --array=0
 #SBATCH --mail-user=g.s.bennabhaktula@rug.nl
@@ -23,7 +23,7 @@
 # ResNet50   | 6.5 hrs  | 
 
 module load CUDA/11.1.1-GCC-10.2.0
-source /data/p288722/python_venv/deep_hashing/bin/activate
+source /data/p288722/python_venv/pushpull-conv/bin/activate
 
 # python /home/p288722/git_code/pushpull-conv/project/train_flow.py --model resnet18 --no-use_push_pull
 # --logs_dir /data2/p288722/runtime_data/pushpull-conv --task retrieval --experiment_name resnet18_imagenet200_retrieval
@@ -32,16 +32,19 @@ source /data/p288722/python_venv/deep_hashing/bin/activate
 
 train_script="$HOME/git_code/pushpull-conv/project/train_flow.py"
 logs_dir="/data/p288722/runtime_data/pushpull-conv"
-experiment_name="resnet18_imagenet200_retrieval"
+experiment_name="resnet50_imagenet200_retrieval"
 dataset_dir="/data/p288722/datasets/imagenet"
 dataset_name="imagenet200"
 corrupted_dataset_dir="/scratch/p288722/datasets/imagenet/imagenet-c"
 corrupted_dataset_name="imagenet200-c"
 task="retrieval"
-common_train_args="--img_size 224 --model resnet18 --hash_length 48 --no-scale_the_outputs --bias --num_workers 12 --batch_size 256 --weight_decay 0.0001 --learning_rate 0.01 --task ${task} --logs_dir ${logs_dir} --experiment_name ${experiment_name} --dataset_dir ${dataset_dir} --dataset_name ${dataset_name}"
-#echo python ${train_script} --no-use_push_pull --logs_version ${SLURM_ARRAY_TASK_ID} ${common_train_args}
+common_train_args="--img_size 224 --model resnet50 --hash_length 64 --quantization_weight 0.0001 --no-scale_the_outputs --bias --num_workers 12 --batch_size 256 --max_epochs -1 --weight_decay 0.0001 --learning_rate 0.01 --task ${task} --logs_dir ${logs_dir} --experiment_name ${experiment_name} --dataset_dir ${dataset_dir} --dataset_name ${dataset_name}"
+#echo python ${train_script} --no-use_push_pull --logs_version ${SLURM_ARRAY_TASK_ID} ${common_train_args}q
 
 python ${train_script} --no-use_push_pull --logs_version ${SLURM_ARRAY_TASK_ID} ${common_train_args}
+#cd /home/p288722/git_code/pushpull-conv/project/misc
+#sbatch run_jobs_peregrine.sh
+
 
 #case ${SLURM_ARRAY_TASK_ID} in
 #0) python ${train_script} --no-use_push_pull --logs_version ${SLURM_ARRAY_TASK_ID} ${common_train_args} ;;

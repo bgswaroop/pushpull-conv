@@ -3,12 +3,16 @@ from pathlib import Path
 
 import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
-from torchmetrics.functional import accuracy
+from tqdm import tqdm
 
 from data import get_dataset
 from models import get_classifier
+
+
+# from torchmetrics.functional import accuracy
 
 
 def parse_args():
@@ -16,10 +20,11 @@ def parse_args():
     parser.add_argument('--img_size', default=224, type=int, choices=[32, 224])
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--dataset_dir', default='/data/p288722/datasets/cifar', type=str)
-    parser.add_argument('--dataset_name', default='cifar10', choices=['cifar10', 'imagenet', 'imagenet200'])
+    parser.add_argument('--dataset_name', default='cifar10', choices=['cifar10',
+                                                                      'imagenet', 'imagenet200', 'imagenet100'])
     parser.add_argument('--finetune', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--finetune_ckpt', type=str, default=None)
-    parser.add_argument('--ckpt', type=str, default=None)
+    parser.add_argument('--ckpt', type=str, default=None)  # ckpt to continue training
 
     # Pytorch lightning args
     parser.add_argument('--logs_dir', required=True, type=str, help='Path to save the logs/metrics during training')
@@ -46,7 +51,7 @@ def parse_args():
     parser.add_argument('--learning_rate', type=float, default=3e-4)
     parser.add_argument('--weight_decay', type=float, default=0.004)  # regularization
     parser.add_argument('--hash_length', type=int, default=48)
-    parser.add_argument('--binary_hash_regularization_weight', type=float, default=0.01)
+    parser.add_argument('--quantization_weight', type=float, default=0.01)
 
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
@@ -58,8 +63,8 @@ def parse_args():
         args.device = torch.device(f'cuda:{torch.cuda.current_device()}')
     else:
         args.device = torch.device(f'cpu')
-    if not args.max_epochs:
-        args.max_epochs = 60
+    # if not args.max_epochs:
+    #     args.max_epochs = 60
 
     assert Path(args.dataset_dir).exists(), 'dataset_dir does not exists!'
     assert Path(args.logs_dir).exists(), 'logs_dir does not exists!'
@@ -96,7 +101,6 @@ def train_on_clean_images():
     # ------------
     logger = TensorBoardLogger(save_dir=args.logs_dir, name=args.experiment_name, default_hp_metric=False,
                                version=args.logs_version)
-    # fixme: populate dir_path when continue training is set
     ckpt_callback1 = ModelCheckpoint(mode='min', monitor='loss_val', filename='{epoch}-{loss_val:.2f}', save_last=True)
     if args.task == 'classification':
         ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top1_acc_val', filename='{epoch}-{top1_acc_val:.2f}')
@@ -107,16 +111,23 @@ def train_on_clean_images():
     else:
         raise ValueError('Invalid task!')
     lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
+
+    class LitProgressBar(TQDMProgressBar):
+        def init_validation_tqdm(self):
+            bar = tqdm(disable=True, )
+            return bar
+
+    progress_bar_callback = LitProgressBar(refresh_rate=200)
+
     trainer = pl.Trainer.from_argparse_args(args,
                                             logger=logger,
                                             callbacks=[ckpt_callback1, ckpt_callback2, ckpt_callback3,
-                                                       lr_monitor_callback],
-                                            resume_from_checkpoint=args.ckpt)
+                                                       lr_monitor_callback, progress_bar_callback])
 
     if args.task == 'classification':
-        trainer.fit(model, train_loader, val_dataloaders=[val_loader])
+        trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[val_loader])
     elif args.task == 'retrieval':
-        trainer.fit(model, train_loader, val_dataloaders=[train_loader, val_loader])
+        trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[train_loader, val_loader])
 
     # # ------------
     # # testing

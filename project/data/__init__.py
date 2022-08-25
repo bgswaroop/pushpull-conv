@@ -14,12 +14,16 @@ def get_dataset(dataset_name, dataset_dir, img_size=224, num_severities=5):
         dataset = CIFAR10C(dataset_dir, num_severities)
     elif dataset_name == 'imagenet':
         dataset = ImageNet(dataset_dir, img_size)
+    elif dataset_name == 'imagenet100':
+        dataset = ImageNet(dataset_dir, img_size, use_subset=100)
     elif dataset_name == 'imagenet200':
-        dataset = ImageNet(dataset_dir, img_size, use_subset_200=True)
+        dataset = ImageNet(dataset_dir, img_size, use_subset=200)
     elif dataset_name == 'imagenet-c':
         dataset = ImageNetC(dataset_dir)
+    elif dataset_name == 'imagenet100-c':
+        dataset = ImageNetC(dataset_dir, use_subset=100)
     elif dataset_name == 'imagenet200-c':
-        dataset = ImageNetC(dataset_dir, use_subset_200=True)
+        dataset = ImageNetC(dataset_dir, use_subset=200)
     else:
         raise ValueError('Invalid dataset_name')
     return dataset
