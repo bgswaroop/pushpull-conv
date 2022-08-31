@@ -33,22 +33,21 @@ class CIFAR10:
             _normalize
         ])
 
-    def get_train_dataloader(self, batch_size, num_workers):
+    def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
         dataset = torchvision.datasets.CIFAR10(self.root, True, self._transform_train, None, self.download)
         data_split_train, data_split_val = random_split(dataset, self._split, torch.Generator().manual_seed(99))
-        train_loader = DataLoader(data_split_train, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+        train_loader = DataLoader(data_split_train, batch_size, shuffle, num_workers=num_workers)
         return train_loader
 
-    def get_validation_dataloader(self, batch_size, num_workers):
+    def get_validation_dataloader(self, batch_size, num_workers, shuffle=False):
         dataset = torchvision.datasets.CIFAR10(self.root, True, self._transform_test, None, self.download)
         data_split_train, data_split_val = random_split(dataset, self._split, torch.Generator().manual_seed(99))
-        validation_dataloader = DataLoader(data_split_val, shuffle=False, batch_size=batch_size,
-                                           num_workers=num_workers)
+        validation_dataloader = DataLoader(data_split_val, batch_size, shuffle, num_workers=num_workers)
         return validation_dataloader
 
-    def get_test_dataloader(self, batch_size, num_workers):
+    def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
         dataset = torchvision.datasets.CIFAR10(self.root, False, self._transform_test, None, self.download)
-        test_dataloader = DataLoader(dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+        test_dataloader = DataLoader(dataset, batch_size, shuffle, num_workers=num_workers)
         return test_dataloader
 
     @staticmethod
@@ -151,10 +150,19 @@ class _ImageNetBase(Dataset):
         labels_text = sorted([x.stem for x in self.root.glob('Annotations/CLS-LOC/train/*')])
         self.labels_txt_to_num = {x: idx for idx, x in enumerate(labels_text)}
         self.labels_num_to_txt = {idx: x for idx, x in enumerate(labels_text)}
+
         if self.split == 'train':
             self.data = sorted(self.root.glob('Data/CLS-LOC/train/*/*'))
             self.labels = [self.labels_txt_to_num[x.stem.split('_')[0]] for x in self.data]
             self.transform = self._transform_train
+
+        elif self.split == '100-class-balanced-train':
+            with open(Path(__file__).parent.joinpath(f'imagenet_c/100-class-train.txt')) as f:
+                training_images = f.readlines()
+            self.data = [self.root.joinpath(f'Data/CLS-LOC/train/{x.strip()}') for x in training_images]
+            self.labels = [self.labels_txt_to_num[x.stem.split('_')[0]] for x in self.data]
+            self.transform = self._transform_train
+
         elif self.split == 'val':
             val_annotations = self.root.glob('Annotations/CLS-LOC/val/*.xml')
             self.labels = {}
@@ -163,10 +171,10 @@ class _ImageNetBase(Dataset):
                 label = root[5][0].text
                 filename = root[1].text
                 self.labels[filename] = self.labels_txt_to_num[label]
-
             self.data = sorted(self.root.glob('Data/CLS-LOC/val/*'))
             self.labels = [self.labels[x.stem] for x in self.data]
             self.transform = self._transform_test
+
         else:
             raise ValueError('Invalid split')
 
@@ -211,21 +219,27 @@ class ImageNet:
         self.img_size = img_size
         self.use_subset = use_subset
 
-    def get_train_dataloader(self, batch_size, num_workers):
+    def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
         self.dataset = _ImageNetBase(self.root, 'train', self.img_size, self.use_subset)
-        train_loader = DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers,
+        train_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
                                   prefetch_factor=8, pin_memory=True)
         return train_loader
 
-    def get_validation_dataloader(self, batch_size=None, num_workers=None):
+    def get_100_class_balanced_train_dataloader(self, batch_size, num_workers, shuffle=True):
+        self.dataset = _ImageNetBase(self.root, '100-class-balanced-train', self.img_size, self.use_subset)
+        train_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
+                                  prefetch_factor=8, pin_memory=True)
+        return train_loader
+
+    def get_validation_dataloader(self, batch_size=None, num_workers=None, shuffle=False):
         self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset)
-        val_loader = DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers,
+        val_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
                                 prefetch_factor=8, pin_memory=True)
         return val_loader
 
-    def get_test_dataloader(self, batch_size, num_workers):
+    def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
         self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset)
-        test_loader = DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers,
+        test_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
                                  prefetch_factor=8, pin_memory=True)
         return test_loader
 
@@ -278,17 +292,25 @@ class ImageNetC:
         self._severity_level = str(int(value))
         dataset = self.root.joinpath(self._corruption_type).joinpath(self._severity_level)
         self.images = list(dataset.glob('*/*'))
-        self.labels_text_to_numeric = {x.stem: idx for idx, x in enumerate(sorted(dataset.glob('*')))}
-        self.labels = [self.labels_text_to_numeric[x.parent.name] for x in self.images]
+        labels_text = sorted([x.stem for x in dataset.glob('*')])
+        self.labels_txt_to_num = {x: idx for idx, x in enumerate(labels_text)}
+        self.labels_num_to_txt = {idx: x for idx, x in enumerate(labels_text)}
+        self.labels = [self.labels_txt_to_num[x.parent.name] for x in self.images]
 
         if self.use_subset:
             self._extract_subset(num_classes=self.use_subset)
+
+        # Relabel the samples
+        relabel_map = {x: idx for idx, x in enumerate(sorted(np.unique(self.labels)))}
+        self.labels = [relabel_map[x] for x in self.labels]
+        self.labels_txt_to_num = {self.labels_num_to_txt[old_id]: new_id for old_id, new_id in relabel_map.items()}
+        self.labels_num_to_txt = {num: text for text, num in self.labels_txt_to_num.items()}
 
     def _extract_subset(self, num_classes):
         assert num_classes in {100, 200}, "Invalid number of classes!"
         with open(Path(__file__).parent.joinpath(f'imagenet_c/imagenet_{num_classes}_classes.json')) as f:
             subset_class_names = sorted(json.load(f))
-            subset_class_numbers = set([self.labels_text_to_numeric[x] for x in subset_class_names])
+            subset_class_numbers = set([self.labels_txt_to_num[x] for x in subset_class_names])
         images, labels = [], []
         for i, l in zip(self.images, self.labels):
             if l in subset_class_numbers:
@@ -306,6 +328,6 @@ class ImageNetC:
     def __len__(self):
         return len(self.labels)
 
-    def get_test_dataloader(self, batch_size, num_workers):
-        test_dataloader = DataLoader(self, batch_size=batch_size, num_workers=num_workers)
+    def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
+        test_dataloader = DataLoader(self, batch_size, shuffle, num_workers=num_workers)
         return test_dataloader

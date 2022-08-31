@@ -1,12 +1,12 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import pandas as pd
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 
-from ..utils import DSHSamplingLoss, CSQLoss, compute_map_score
+from ..utils import CSQLoss, compute_map_score, DSHSamplingLoss
 from ..utils.push_pull_unit import PushPullConv2DUnit
 
 
@@ -18,11 +18,29 @@ class BaseNet(pl.LightningModule):
             margin=self.hparams.hash_length * 2,
             alpha=self.hparams.quantization_weight
         )
-        # self.loss = CSQLoss(
-        #     num_classes=self.hparams.num_classes,
-        #     hash_length=self.hparams.hash_length,
-        #     quantization_weight=self.hparams.quantization_weight,
-        # )
+    #     hash_targets_file = Path(self.hparams.logger.log_dir).joinpath('hash_targets.pt')
+    #     hash_targets = torch.load(hash_targets_file) if hash_targets_file.exists() else None
+    #     self.loss = CSQLoss(
+    #         num_classes=self.hparams.num_classes,
+    #         hash_length=self.hparams.hash_length,
+    #         quantization_weight=self.hparams.quantization_weight,
+    #         hash_targets=hash_targets,
+    #     )
+    #     if not hash_targets_file.exists():
+    #         Path(self.hparams.logger.log_dir).mkdir(exist_ok=True, parents=True)
+    #         torch.save(self.loss.hash_targets, hash_targets_file)
+    #
+    # def on_train_start(self) -> None:
+    #     self.loss.hash_targets = self.loss.hash_targets.to(self.device)
+    #
+    # def on_validation_start(self) -> None:
+    #     self.loss.hash_targets = self.loss.hash_targets.to(self.device)
+    #
+    # def on_predict_start(self) -> None:
+    #     self.loss.hash_targets = self.loss.hash_targets.to(self.device)
+    #
+    # def on_test_start(self) -> None:
+    #     self.loss.hash_targets = self.loss.hash_targets.to(self.device)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -94,12 +112,14 @@ class BaseNet(pl.LightningModule):
                 self.log(f'top50_mAP_val', val_score[key], logger=False)
             if key == 'top200':
                 self.log(f'top200_mAP_val', val_score[key], logger=False)
+            if key == 'top1000':
+                self.log(f'top1000_mAP_val', val_score[key], logger=False)
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         x, y = batch
         y_hat = self(x)
         hash_code = torch.sign(y_hat)
-        return {'hash_codes': hash_code, 'ground_truths': y}
+        return {'predictions': hash_code, 'ground_truths': y}
 
     def configure_optimizers(self):
 
@@ -107,12 +127,17 @@ class BaseNet(pl.LightningModule):
                                     lr=self.hparams.learning_rate,
                                     momentum=0.9,
                                     weight_decay=self.hparams.weight_decay)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True,
+                                                               mode='min', factor=0.1, patience=5)
+        return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss_val'}}
 
+        # params_list = [
+        #     {'params': self.features.parameters(), 'lr': self.hparams.learning_rate * self.hparams.lr_multiplier},
+        #     {'params': self.classifier.parameters()}
+        # ]
         # optimizer = torch.optim.Adam(self.parameters(),
         #                              lr=self.hparams.learning_rate,
         #                              weight_decay=self.hparams.weight_decay)
-
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True,
-                                                               mode='min', factor=0.1, patience=5)
-
-        return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss_val'}}
+        # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True,
+        #                                                        mode='min', factor=0.1, patience=5)
+        # return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss_val'}}

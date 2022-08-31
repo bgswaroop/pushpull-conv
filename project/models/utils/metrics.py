@@ -1,7 +1,8 @@
 import torch
 
 
-def compute_map_score(train_hash_codes, train_ground_truths, query_hash_codes, query_ground_truths, device=None):
+def compute_map_score(train_hash_codes, train_ground_truths, query_hash_codes, query_ground_truths, device=None,
+                      return_as_float=False):
     """
     credits: https://github.com/weixu000/DSH-pytorch/blob/906399c3b92cf8222bca838c2b2e0e784e0408fa/utils.py#L58
     :param train_hash_codes: An input tensor of dims (num_train, hash_length) with binary values
@@ -9,6 +10,7 @@ def compute_map_score(train_hash_codes, train_ground_truths, query_hash_codes, q
     :param query_hash_codes: An input tensor of dims (num_query, hash_length) with binary values
     :param query_ground_truths: An input tensor of dims (num_query,)
     :param device: torch.device()
+    :param return_as_float: (FALSE) return the scores as Tensor by default.
     :return: map_score considering top-k retrieved samples
     """
 
@@ -18,7 +20,7 @@ def compute_map_score(train_hash_codes, train_ground_truths, query_hash_codes, q
     query_ground_truths = query_ground_truths.to(device)
 
     num_samples = torch.arange(1, train_hash_codes.size(0) + 1).to(device)
-    top_k_values = [train_hash_codes.size(0), 50, 100, 200, 500]
+    top_k_values = [train_hash_codes.size(0), 50, 100, 200, 500, 1000]
     AP = {f'top{k}': [] for k in top_k_values}  # average precision
 
     for i in range(query_hash_codes.size(0)):
@@ -36,5 +38,9 @@ def compute_map_score(train_hash_codes, train_ground_truths, query_hash_codes, q
     map_score = {}
     for key, value in AP.items():
         map_score[key] = torch.mean(torch.Tensor(AP[key]))
+
+    if return_as_float:
+        for key, value in map_score.items():
+            map_score[key] = float(value)
 
     return map_score

@@ -72,7 +72,7 @@ class BaseNet(pl.LightningModule):
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         x, y = batch
         y_hat = self(x)
-        y_hat = torch.argmax(F.softmax(y_hat, dim=1), dim=1)
+        # y_hat = torch.argmax(F.softmax(y_hat, dim=1), dim=1)
         return {'predictions': y_hat, 'ground_truths': y}
 
     def configure_optimizers(self):

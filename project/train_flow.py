@@ -3,9 +3,10 @@ from pathlib import Path
 
 import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, EarlyStopping
 from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
+# from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from tqdm import tqdm
 
 from data import get_dataset
@@ -13,6 +14,11 @@ from models import get_classifier
 
 
 # from torchmetrics.functional import accuracy
+
+class LitProgressBar(TQDMProgressBar):
+    def init_validation_tqdm(self):
+        bar = tqdm(disable=True, )
+        return bar
 
 
 def parse_args():
@@ -46,9 +52,9 @@ def parse_args():
     parser.add_argument('--model', default='AlexNet', type=str, required=True)
     parser.add_argument('--task', default='classification', type=str, required=True,
                         choices=['classification', 'retrieval'])
-    parser.add_argument('--top_k', default=None, type=int)
 
     parser.add_argument('--learning_rate', type=float, default=3e-4)
+    parser.add_argument('--lr_multiplier', type=float, default=1e-2)
     parser.add_argument('--weight_decay', type=float, default=0.004)  # regularization
     parser.add_argument('--hash_length', type=int, default=48)
     parser.add_argument('--quantization_weight', type=float, default=0.01)
@@ -73,25 +79,26 @@ def parse_args():
     if args.finetune:
         assert Path(args.finetune_ckpt).exists(), 'finetune_ckpt path does not exists!'
 
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
     return args
 
 
-def train_on_clean_images():
+def train_on_clean_images(args):
     pl.seed_everything(1234)
-    args = parse_args()
-
     # ------------
     # data
     # ------------
     dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
-    train_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers)
-    val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers)
-    test_loader = dataset.get_test_dataloader(args.batch_size, args.num_workers)
+    train_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=True)
+    # test_loader = dataset.get_test_dataloader(args.batch_size, args.num_workers)
     args.num_classes = dataset.get_num_classes()
 
     # ------------
     # model
     # ------------
+    args.logger = TensorBoardLogger(save_dir=args.logs_dir, name=args.experiment_name, default_hp_metric=False,
+                                    version=args.logs_version)
     model = get_classifier(args.task, args.model)(args)
     if args.finetune:
         raise NotImplementedError()
@@ -99,35 +106,40 @@ def train_on_clean_images():
     # ------------
     # training
     # ------------
-    logger = TensorBoardLogger(save_dir=args.logs_dir, name=args.experiment_name, default_hp_metric=False,
-                               version=args.logs_version)
     ckpt_callback1 = ModelCheckpoint(mode='min', monitor='loss_val', filename='{epoch}-{loss_val:.2f}', save_last=True)
     if args.task == 'classification':
         ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top1_acc_val', filename='{epoch}-{top1_acc_val:.2f}')
         ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top5_acc_val', filename='{epoch}-{top5_acc_val:.2f}')
+        # tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
+        #                                             "top5_acc_val": "top5_acc_val"}, on="validation_end")
+        early_stopping_cb = EarlyStopping(monitor='top1_acc_val', mode='max', patience=7, min_delta=0.002)
     elif args.task == 'retrieval':
         ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
         ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')
+        # tune_callback = TuneReportCallback(metrics={"top1000_mAP_val": "top1000_mAP_val", }, on="validation_end")
+        early_stopping_cb = EarlyStopping(monitor='top1_acc_val', mode='max', patience=7, min_delta=0.002)
     else:
         raise ValueError('Invalid task!')
     lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
-
-    class LitProgressBar(TQDMProgressBar):
-        def init_validation_tqdm(self):
-            bar = tqdm(disable=True, )
-            return bar
-
-    progress_bar_callback = LitProgressBar(refresh_rate=200)
+    progress_bar_callback = LitProgressBar(refresh_rate=100)
 
     trainer = pl.Trainer.from_argparse_args(args,
-                                            logger=logger,
+                                            logger=args.logger,
                                             callbacks=[ckpt_callback1, ckpt_callback2, ckpt_callback3,
-                                                       lr_monitor_callback, progress_bar_callback])
+                                                       lr_monitor_callback, progress_bar_callback,
+                                                       # tune_callback,
+                                                       early_stopping_cb])
 
     if args.task == 'classification':
+        val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=False)
         trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[val_loader])
     elif args.task == 'retrieval':
-        trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[train_loader, val_loader])
+        val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=True)
+        if args.dataset_name == 'imagenet100':
+            balanced_train_loader = dataset.get_100_class_balanced_train_dataloader(args.batch_size, args.num_workers)
+            trainer.fit(model, balanced_train_loader, ckpt_path=args.ckpt, val_dataloaders=[train_loader, val_loader])
+        else:
+            trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[train_loader, val_loader])
 
     # # ------------
     # # testing
@@ -147,5 +159,10 @@ def train_on_clean_images():
     # print(f'Test  set accuracy: {acc1}')
 
 
+def run_flow():
+    args = parse_args()
+    train_on_clean_images(args)
+
+
 if __name__ == '__main__':
-    train_on_clean_images()
+    run_flow()

@@ -93,9 +93,9 @@ class DSHSamplingLoss(torch.nn.Module):
 
 # Code adapted from - https://github.com/swuxyj/DeepHash-pytorch/blob/993909f4e0e9f599b503ce5c380e2fcc7c6824f7/CSQ.py
 class CSQLoss(torch.nn.Module):
-    def __init__(self, num_classes, hash_length, quantization_weight, device='cuda:0'):
+    def __init__(self, num_classes, hash_length, quantization_weight, hash_targets=None):
         super(CSQLoss, self).__init__()
-        self.hash_targets = self._get_hash_targets(num_classes, hash_length).to(device)
+        self.hash_targets = self._get_hash_targets(num_classes, hash_length) if hash_targets is None else hash_targets
         self.criterion = torch.nn.BCELoss()
         self.quantization_weight = quantization_weight  # lambda
 
