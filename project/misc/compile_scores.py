@@ -4,81 +4,89 @@ from pathlib import Path
 import pandas as pd
 
 
-def save_scores(exp_names, exp_results):
+def save_scores(exp_names, robustness_metrics, scores_on_clean_dataset, save_dir):
     row_header = ['Error', 'mCE',
                   'Gauss', 'Shot', 'Impulse',  # Noise
                   'Defocus', 'Glass', 'Motion', 'Zoom',  # Blur
                   'Snow', 'Frost', 'Fog', 'Bright',  # Weather
                   'Contrast', 'Elastic', 'Pixel', 'JPEG'  # Digital
                   ]
-    df1 = pd.DataFrame(index=exp_names, columns=row_header)
-    for idx, result in zip(exp_names, exp_results):
-        df1['Error'][idx] = 1 - result['mAP']['clean']
-        df1['mCE'][idx] = result['mCE']
-        df1['Gauss'][idx] = result['CE'].get('gaussian_noise', None)
-        df1['Shot'][idx] = result['CE'].get('shot_noise', None)
-        df1['Impulse'][idx] = result['CE'].get('impulse_noise', None)
-        df1['Defocus'][idx] = result['CE'].get('defocus_blur', None)
-        df1['Glass'][idx] = result['CE'].get('glass_blur', None)
-        df1['Motion'][idx] = result['CE'].get('motion_blur', None)
-        df1['Zoom'][idx] = result['CE'].get('zoom_blur', None)
-        df1['Snow'][idx] = result['CE'].get('snow', None)
-        df1['Frost'][idx] = result['CE'].get('frost', None)
-        df1['Fog'][idx] = result['CE'].get('fog', None)
-        df1['Bright'][idx] = result['CE'].get('brightness', None)
-        df1['Contrast'][idx] = result['CE'].get('contrast', None)
-        df1['Elastic'][idx] = result['CE'].get('elastic_transform', None)
-        df1['Pixel'][idx] = result['CE'].get('pixelate', None)
-        df1['JPEG'][idx] = result['CE'].get('jpeg_compression', None)
+
+    summary_results = dict()
+    for topk in scores_on_clean_dataset[0].keys():
+        df_CE = pd.DataFrame(index=exp_names, columns=row_header)
+        for idx, r, s in zip(exp_names, robustness_metrics, scores_on_clean_dataset):
+            df_CE['Error'][idx] = 1 - s.get(topk, None)
+            df_CE['mCE'][idx] = r['mCE'].get(topk, None)
+            df_CE['Gauss'][idx] = r['CE'].get(topk, {}).get('gaussian_noise', None)
+            df_CE['Shot'][idx] = r['CE'].get(topk, {}).get('shot_noise', None)
+            df_CE['Impulse'][idx] = r['CE'].get(topk, {}).get('impulse_noise', None)
+            df_CE['Defocus'][idx] = r['CE'].get(topk, {}).get('defocus_blur', None)
+            df_CE['Glass'][idx] = r['CE'].get(topk, {}).get('glass_blur', None)
+            df_CE['Motion'][idx] = r['CE'].get(topk, {}).get('motion_blur', None)
+            df_CE['Zoom'][idx] = r['CE'].get(topk, {}).get('zoom_blur', None)
+            df_CE['Snow'][idx] = r['CE'].get(topk, {}).get('snow', None)
+            df_CE['Frost'][idx] = r['CE'].get(topk, {}).get('frost', None)
+            df_CE['Fog'][idx] = r['CE'].get(topk, {}).get('fog', None)
+            df_CE['Bright'][idx] = r['CE'].get(topk, {}).get('brightness', None)
+            df_CE['Contrast'][idx] = r['CE'].get(topk, {}).get('contrast', None)
+            df_CE['Elastic'][idx] = r['CE'].get(topk, {}).get('elastic_transform', None)
+            df_CE['Pixel'][idx] = r['CE'].get(topk, {}).get('pixelate', None)
+            df_CE['JPEG'][idx] = r['CE'].get(topk, {}).get('jpeg_compression', None)
+        summary_results[f'CE_{topk}.csv'] = df_CE
 
     row_header[1] = 'Rel. mCE'
-    df2 = pd.DataFrame(index=exp_names, columns=row_header)
-    for idx, result in zip(exp_names, exp_results):
-        df2['Error'][idx] = 1 - result['mAP']['clean']
-        df2['Rel. mCE'][idx] = result['relative_mCE']
-        df2['Gauss'][idx] = result['relative_CE'].get('gaussian_noise', None)
-        df2['Shot'][idx] = result['relative_CE'].get('shot_noise', None)
-        df2['Impulse'][idx] = result['relative_CE'].get('impulse_noise', None)
-        df2['Defocus'][idx] = result['relative_CE'].get('defocus_blur', None)
-        df2['Glass'][idx] = result['relative_CE'].get('glass_blur', None)
-        df2['Motion'][idx] = result['relative_CE'].get('motion_blur', None)
-        df2['Zoom'][idx] = result['relative_CE'].get('zoom_blur', None)
-        df2['Snow'][idx] = result['relative_CE'].get('snow', None)
-        df2['Frost'][idx] = result['relative_CE'].get('frost', None)
-        df2['Fog'][idx] = result['relative_CE'].get('fog', None)
-        df2['Bright'][idx] = result['relative_CE'].get('brightness', None)
-        df2['Contrast'][idx] = result['relative_CE'].get('contrast', None)
-        df2['Elastic'][idx] = result['relative_CE'].get('elastic_transform', None)
-        df2['Pixel'][idx] = result['relative_CE'].get('pixelate', None)
-        df2['JPEG'][idx] = result['relative_CE'].get('jpeg_compression', None)
+    for topk in scores_on_clean_dataset[0].keys():
+        df_rCE = pd.DataFrame(index=exp_names, columns=row_header)
+        for idx, r, s in zip(exp_names, robustness_metrics, scores_on_clean_dataset):
+            df_rCE['Error'][idx] = 1 - s.get(topk, None)
+            df_rCE['Rel. mCE'][idx] = r['relative_mCE'].get(topk, None)
+            df_rCE['Gauss'][idx] = r['relative_CE'].get(topk, {}).get('gaussian_noise', None)
+            df_rCE['Shot'][idx] = r['relative_CE'].get(topk, {}).get('shot_noise', None)
+            df_rCE['Impulse'][idx] = r['relative_CE'].get(topk, {}).get('impulse_noise', None)
+            df_rCE['Defocus'][idx] = r['relative_CE'].get(topk, {}).get('defocus_blur', None)
+            df_rCE['Glass'][idx] = r['relative_CE'].get(topk, {}).get('glass_blur', None)
+            df_rCE['Motion'][idx] = r['relative_CE'].get(topk, {}).get('motion_blur', None)
+            df_rCE['Zoom'][idx] = r['relative_CE'].get(topk, {}).get('zoom_blur', None)
+            df_rCE['Snow'][idx] = r['relative_CE'].get(topk, {}).get('snow', None)
+            df_rCE['Frost'][idx] = r['relative_CE'].get(topk, {}).get('frost', None)
+            df_rCE['Fog'][idx] = r['relative_CE'].get(topk, {}).get('fog', None)
+            df_rCE['Bright'][idx] = r['relative_CE'].get(topk, {}).get('brightness', None)
+            df_rCE['Contrast'][idx] = r['relative_CE'].get(topk, {}).get('contrast', None)
+            df_rCE['Elastic'][idx] = r['relative_CE'].get(topk, {}).get('elastic_transform', None)
+            df_rCE['Pixel'][idx] = r['relative_CE'].get(topk, {}).get('pixelate', None)
+            df_rCE['JPEG'][idx] = r['relative_CE'].get(topk, {}).get('jpeg_compression', None)
+        summary_results[f'rCE_{topk}.csv'] = df_rCE
 
-    df1.to_csv(r'_csv_results/CE.csv')
-    df2.to_csv(r'_csv_results/rel_CE.csv')
-
+    for filename, df in summary_results.items():
+        df.to_csv(save_dir.joinpath(filename))
 
 def run_flow():
-    base_dir = Path(r'/data/p288722/runtime_data/deep_hashing/dsh_pp_ResNet50_48bit_step_lr_decay_run1')
-    dataset_name = 'CIFAR-10-C-224x224'
-    baseline_results_file = '/data/p288722/runtime_data/deep_hashing/dsh_pp_ResNet50_48bit_step_lr_decay_run1/ResNet50_48bit/results/mAP_scores.json'
-    exp_names = [
-        'ResNet50_48bit',
-        # 'ResNet50_pp7x7_avg3',
-        'ResNet50_pp7x7_avg3_inh1',
-        'ResNet50_pp7x7_avg3_inh2',
-        'ResNet50_pp7x7_avg3_inh3',
-        'ResNet50_pp7x7_avg3_inh4',
-        'ResNet50_pp7x7_avg5_inh1',
-        'ResNet50_pp7x7_avg5_inh2',
-        'ResNet50_pp7x7_avg5_inh3',
-        'ResNet50_pp7x7_avg5_inh4',
+    compile_scores_dir = Path(r'/data/p288722/runtime_data/pushpull-conv/resnet18_imagenet200_classification')
+    dataset_name = 'imagenet200-c'
+    baseline_exp_dir = '/data/p288722/runtime_data/pushpull-conv/resnet18_imagenet200_classification/resnet18'
+    experiments = [
+        'resnet18',
+        # 'resnet18_pp7x7_avg3',
+        'resnet18_pp7x7_avg3_inh1',
+        'resnet18_pp7x7_avg3_inh2',
+        'resnet18_pp7x7_avg3_inh3',
+        'resnet18_pp7x7_avg3_inh4',
+        'resnet18_pp7x7_avg5_inh1',
+        'resnet18_pp7x7_avg5_inh2',
+        'resnet18_pp7x7_avg5_inh3',
+        'resnet18_pp7x7_avg5_inh4',
     ]
 
-    exp_results = []
-    for exp_name in exp_names:
-        with open(base_dir.joinpath(rf'{exp_name}/results/all_scores.json')) as f:
-            exp_results.append(json.load(f)[dataset_name][baseline_results_file])
+    robustness_metrics = []
+    scores_on_clean_dataset = []
+    for exp in experiments:
+        with open(compile_scores_dir.joinpath(rf'{exp}/results/all_scores.json')) as f:
+            exp_data = json.load(f)
+            robustness_metrics.append(exp_data[dataset_name]['scores_versus_baseline'][baseline_exp_dir])
+            scores_on_clean_dataset.append(exp_data[dataset_name]['scores']['clean'])
 
-    save_scores(exp_names, exp_results)
+    save_scores(experiments, robustness_metrics, scores_on_clean_dataset, compile_scores_dir)
 
 
 if __name__ == '__main__':

@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
-# from ray.tune.integration.pytorch_lightning import TuneReportCallback
+from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from tqdm import tqdm
 
 from data import get_dataset
@@ -28,8 +28,8 @@ def parse_args():
     parser.add_argument('--dataset_dir', default='/data/p288722/datasets/cifar', type=str)
     parser.add_argument('--dataset_name', default='cifar10', choices=['cifar10',
                                                                       'imagenet', 'imagenet200', 'imagenet100'])
-    parser.add_argument('--finetune', action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument('--finetune_ckpt', type=str, default=None)
+    parser.add_argument('--finetune', action=argparse.BooleanOptionalAction, default=False)  # todo: deprecate
+    parser.add_argument('--finetune_ckpt', type=str, default=None)  # todo: deprecate
     parser.add_argument('--ckpt', type=str, default=None)  # ckpt to continue training
 
     # Pytorch lightning args
@@ -43,18 +43,18 @@ def parse_args():
     # Push Pull Convolutional Unit Params
     parser.add_argument('--use_push_pull', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--num_push_pull_layers', type=int, default=1)
-    parser.add_argument('--push_kernel_size', type=int, default=3, help='Size of the push filter (int)')
-    parser.add_argument('--pull_kernel_size', type=int, default=3, help='Size of the pull filter (int)')
-    parser.add_argument('--avg_kernel_size', type=int, default=3, help='Size of the avg filter (int)')
+    parser.add_argument('--push_kernel_size', type=int, default=None, help='Size of the push filter (int)')
+    parser.add_argument('--pull_kernel_size', type=int, default=None, help='Size of the pull filter (int)')
+    parser.add_argument('--avg_kernel_size', type=int, default=None, help='Size of the avg filter (int)')
     parser.add_argument('--pull_inhibition_strength', type=float, default=1.0)
-    parser.add_argument('--scale_the_outputs', default=False, action=argparse.BooleanOptionalAction)
-    parser.add_argument('--bias', default=True, action=argparse.BooleanOptionalAction)
+    parser.add_argument('--scale_the_outputs', default=False, action=argparse.BooleanOptionalAction)  # todo: deprecate
+    parser.add_argument('--bias', default=True, action=argparse.BooleanOptionalAction)  # todo: deprecate
     parser.add_argument('--model', default='AlexNet', type=str, required=True)
     parser.add_argument('--task', default='classification', type=str, required=True,
                         choices=['classification', 'retrieval'])
 
     parser.add_argument('--learning_rate', type=float, default=3e-4)
-    parser.add_argument('--lr_multiplier', type=float, default=1e-2)
+    parser.add_argument('--lr_multiplier', type=float, default=1e-2)  # todo: deprecate if not necessary for CSQ Hash
     parser.add_argument('--weight_decay', type=float, default=0.004)  # regularization
     parser.add_argument('--hash_length', type=int, default=48)
     parser.add_argument('--quantization_weight', type=float, default=0.01)
@@ -80,11 +80,23 @@ def parse_args():
         assert Path(args.finetune_ckpt).exists(), 'finetune_ckpt path does not exists!'
 
     torch.use_deterministic_algorithms(True, warn_only=True)
+    if args.dataset_name == 'imagenet' and args.task == 'classification':
+        args.max_epochs = max(70, args.max_epochs)
+        args.batch_size = 64
+        args.learning_rate = 1e-1
+        args.weight_decay = 1e-4
+    elif args.dataset_name == 'cifar10' and args.task == 'classification':
+        pass
+
+    if args.use_push_pull:
+        assert args.push_kernel_size is not None, "Invalid config: use_push_pull=True but push_kernel_size is not set!"
+        assert args.pull_kernel_size is not None, "Invalid config: use_push_pull=True but pull_kernel_size is not set!"
+        assert args.avg_kernel_size is not None, "Invalid config: use_push_pull=True but avg_kernel_size is not set!"
 
     return args
 
 
-def train_on_clean_images(args):
+def train_on_clean_images(args, ray_tune=False):
     pl.seed_everything(1234)
     # ------------
     # data
@@ -110,25 +122,23 @@ def train_on_clean_images(args):
     if args.task == 'classification':
         ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top1_acc_val', filename='{epoch}-{top1_acc_val:.2f}')
         ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top5_acc_val', filename='{epoch}-{top5_acc_val:.2f}')
-        # tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
-        #                                             "top5_acc_val": "top5_acc_val"}, on="validation_end")
-        early_stopping_cb = EarlyStopping(monitor='top1_acc_val', mode='max', patience=7, min_delta=0.002)
+        tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
+                                                    "top5_acc_val": "top5_acc_val"}, on="validation_end")
+        # early_stopping_cb = EarlyStopping(monitor='top1_acc_val', mode='max', patience=7, min_delta=0.002)
     elif args.task == 'retrieval':
         ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
         ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')
-        # tune_callback = TuneReportCallback(metrics={"top1000_mAP_val": "top1000_mAP_val", }, on="validation_end")
-        early_stopping_cb = EarlyStopping(monitor='top1_acc_val', mode='max', patience=7, min_delta=0.002)
+        tune_callback = TuneReportCallback(metrics={"top1000_mAP_val": "top1000_mAP_val", }, on="validation_end")
+        # early_stopping_cb = EarlyStopping(monitor='top1_acc_val', mode='max', patience=7, min_delta=0.002)
     else:
         raise ValueError('Invalid task!')
     lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
     progress_bar_callback = LitProgressBar(refresh_rate=100)
 
-    trainer = pl.Trainer.from_argparse_args(args,
-                                            logger=args.logger,
-                                            callbacks=[ckpt_callback1, ckpt_callback2, ckpt_callback3,
-                                                       lr_monitor_callback, progress_bar_callback,
-                                                       # tune_callback,
-                                                       early_stopping_cb])
+    callbacks = [ckpt_callback1, ckpt_callback2, ckpt_callback3, lr_monitor_callback, progress_bar_callback]
+    callbacks = callbacks + [tune_callback] if ray_tune else callbacks
+
+    trainer = pl.Trainer.from_argparse_args(args, logger=args.logger, callbacks=callbacks)
 
     if args.task == 'classification':
         val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=False)

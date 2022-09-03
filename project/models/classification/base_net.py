@@ -42,7 +42,7 @@ class BaseNet(pl.LightningModule):
         Path(self.logger.log_dir).mkdir(exist_ok=True, parents=True)
         log_file = Path(self.logger.log_dir).joinpath('layer0_pull_inhibition_strength.csv')
 
-        if type(first_layer.pull_inhibition_strength) == float:
+        if type(first_layer.pull_inhibition_strength) in {float, int}:
             data = torch.Tensor([first_layer.pull_inhibition_strength])
         else:
             data = first_layer.pull_inhibition_strength.cpu()

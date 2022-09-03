@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=rn50_in200_cls
-#SBATCH --time=48:00:00
+#SBATCH --job-name=rn50_in100_cls
+#SBATCH --time=2:00:00
 #SBATCH --mem=120g
 #SBATCH --gres=gpu:v100:1
-#SBATCH --partition=gpu
+#SBATCH --partition=gpushort
 #SBATCH --cpus-per-task=12
-#SBATCH --array=0-8
+#SBATCH --array=1
 #SBATCH --mail-user=g.s.bennabhaktula@rug.nl
 #SBATCH --mail-type=FAIL
 
@@ -14,16 +14,20 @@
 # %A - JOB ID
 # %a - TASK ID
 
-# The following times are for V100 GPU with 100GB RAM and 12 CPU cores
-# Dataset    | CIFAR-10 | ImageNet200
-#------------|----------|-------------
-# AlexNet    | 3.5 hrs  |
-# ResNet18   | 4.5 hrs  |
-# ResNet34   | 5.5 hrs  |
-# ResNet50   | 6.5 hrs  | 
+# The following times (upperbound) are for V100 GPU with 100GB RAM and 12 CPU cores
+# Training with a batch size of 64 and 45 epochs
+# Dataset    | CIFAR-10 | ImageNet200 | ImageNet100 |
+#------------|----------|-------------|-------------|
+# AlexNet    | 3.5 hrs  |     hrs     |             |
+# ResNet18   | 4.5 hrs  |  14 hrs     |      -      |
+# ResNet34   | 5.5 hrs  |  14 hrs     |   10 hrs    |
+# ResNet50   | 6.5 hrs  |  15 hrs     |   12 hrs    |
 
 module load CUDA/11.1.1-GCC-10.2.0
 source /data/p288722/python_venv/pushpull-conv/bin/activate
+
+#python /home/p288722/git_code/pushpull-conv/project/predict_flow.py --predict_model_logs_dir /data/p288722/runtime_data/pushpull-conv/resnet50_imagenet100_classification/resnet50_pp7x7_avg3_inh1 --img_size 224 --model resnet50 --num_workers 12 --corruption_types gaussian_noise shot_noise impulse_noise defocus_blur glass_blur motion_blur zoom_blur snow frost fog brightness contrast elastic_transform pixelate jpeg_compression --task classification --dataset_dir /data/p288722/datasets/imagenet --dataset_name imagenet100 --corrupted_dataset_dir /scratch/p288722/datasets/imagenet/imagenet-c --corrupted_dataset_name imagenet100-c --baseline_model_logs_dir /data/p288722/runtime_data/pushpull-conv/resnet50_imagenet100_classification/resnet50
+#python /home/p288722/git_code/pushpull-conv/project/predict_flow.py --predict_model_logs_dir /data/p288722/runtime_data/pushpull-conv/resnet50_imagenet100_classification/resnet50_pp7x7_avg3_inh2 --img_size 224 --model resnet50 --num_workers 12 --corruption_types gaussian_noise shot_noise impulse_noise defocus_blur glass_blur motion_blur zoom_blur snow frost fog brightness contrast elastic_transform pixelate jpeg_compression --task classification --dataset_dir /data/p288722/datasets/imagenet --dataset_name imagenet100 --corrupted_dataset_dir /scratch/p288722/datasets/imagenet/imagenet-c --corrupted_dataset_name imagenet100-c --baseline_model_logs_dir /data/p288722/runtime_data/pushpull-conv/resnet50_imagenet100_classification/resnet50
 
 # python /home/p288722/git_code/pushpull-conv/project/train_flow.py --model resnet18 --no-use_push_pull
 # --logs_dir /data2/p288722/runtime_data/pushpull-conv --task retrieval --experiment_name resnet18_imagenet200_retrieval
@@ -33,13 +37,14 @@ source /data/p288722/python_venv/pushpull-conv/bin/activate
 train_script="$HOME/git_code/pushpull-conv/project/train_flow.py"
 logs_dir="/data/p288722/runtime_data/pushpull-conv"
 task="classification"
-dataset_name="imagenet200"
+dataset_name="imagenet100"
 dataset_dir="/data/p288722/datasets/imagenet"
 corrupted_dataset_dir="/scratch/p288722/datasets/imagenet/imagenet-c"
-corrupted_dataset_name="imagenet200-c"
+corrupted_dataset_name="imagenet100-c"
 model="resnet50"
 experiment_name="${model}_${dataset_name}_${task}"
-common_train_args="--img_size 224 --model ${model} --hash_length 64 --quantization_weight 0.0001 --no-scale_the_outputs --bias --num_workers 12 --batch_size 64 --max_epochs 60 --weight_decay 0.0001 --learning_rate 0.1 --task ${task} --logs_dir ${logs_dir} --experiment_name ${experiment_name} --dataset_dir ${dataset_dir} --dataset_name ${dataset_name}"
+common_train_args="--img_size 224 --model ${model} --hash_length 64 --quantization_weight 0.0001 --no-scale_the_outputs --bias --num_workers 12 --batch_size 64 --max_epochs 45 --weight_decay 0.0001 --learning_rate 0.1 --task ${task} --logs_dir ${logs_dir} --experiment_name ${experiment_name} --dataset_dir ${dataset_dir} --dataset_name ${dataset_name}"
+base_dir="$logs_dir/$experiment_name"
 
 case ${SLURM_ARRAY_TASK_ID} in
 0) python ${train_script} --no-use_push_pull --logs_version ${SLURM_ARRAY_TASK_ID} ${common_train_args} ;;
@@ -52,8 +57,6 @@ case ${SLURM_ARRAY_TASK_ID} in
 7) python ${train_script} --push_kernel_size 7 --pull_kernel_size 7 --avg_kernel_size 5 --pull_inhibition_strength 3 --logs_version ${SLURM_ARRAY_TASK_ID} ${common_train_args} ;;
 8) python ${train_script} --push_kernel_size 7 --pull_kernel_size 7 --avg_kernel_size 5 --pull_inhibition_strength 4 --logs_version ${SLURM_ARRAY_TASK_ID} ${common_train_args} ;;
 esac
-
-base_dir="$logs_dir/$experiment_name"
 
 case ${SLURM_ARRAY_TASK_ID} in
 0) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}" ;;
@@ -75,7 +78,7 @@ common_predict_args="--img_size 224 --model ${model} --num_workers 12 --corrupti
 
 case ${SLURM_ARRAY_TASK_ID} in
 0) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}" ${common_predict_args} --no-use_push_pull ;;
-1) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_pp7x7_avg3_inh1" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
+1) echo python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_pp7x7_avg3_inh1" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
 2) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_pp7x7_avg3_inh2" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
 3) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_pp7x7_avg3_inh3" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
 4) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_pp7x7_avg3_inh4" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
@@ -84,3 +87,6 @@ case ${SLURM_ARRAY_TASK_ID} in
 7) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_pp7x7_avg5_inh3" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
 8) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_pp7x7_avg5_inh4" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
 esac
+
+#python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_pp7x7_avg5_inh3" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir}
+#python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_pp7x7_avg5_inh4" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir}

@@ -12,8 +12,29 @@ from models import get_classifier
 from models.utils import compute_map_score
 
 
-def compute_model_robustness_metrics(scores, baseline_scores):
+# todo: add this method to the results
+def compute_mean_corruption_error(scores):
+    categories = sorted(scores.keys())
+    if 'clean' in scores:
+        categories.remove('clean')
 
+    topk_CE, topk_mCE = dict(), dict()
+    for top_k in scores['clean']:
+        # Compute the error
+        error_classifier = 1 - torch.Tensor([scores[x][top_k] for x in categories])
+
+        # Corruption Error (CE) and it's mean
+        CE = torch.mean(error_classifier, dim=1)
+        mCE = torch.mean(CE)
+
+        # converting all tensors to floats
+        topk_CE[top_k] = {x: float(CE[idx]) for idx, x in enumerate(categories)}
+        topk_mCE[top_k] = float(mCE)
+
+    return topk_CE, topk_mCE
+
+
+def compute_model_robustness_metrics(scores, baseline_scores):
     assert scores.get('clean', False), 'results on clean images not present'
     assert baseline_scores.get('clean', False), 'results on clean images not present'
 
