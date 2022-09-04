@@ -6,6 +6,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+from torch.optim.lr_scheduler import OneCycleLR
 from torchmetrics.functional import accuracy
 
 from ..utils.push_pull_unit import PushPullConv2DUnit
@@ -55,24 +56,36 @@ class BaseNet(pl.LightningModule):
         df = pd.concat([df, data], ignore_index=True)
         df.to_csv(log_file, index=False)
 
-    def validation_step(self, batch, batch_idx, dataloader_idx: int = 0):
+    def evaluate(self, batch, stage=None):
         x, y = batch
         y_hat = self(x)
         loss = F.cross_entropy(y_hat, y)
-        self.log('loss', {'val': loss})
-        self.log('loss_val', loss, add_dataloader_idx=False, logger=False)
         acc1 = accuracy(y_hat, y, top_k=1)
         acc5 = accuracy(y_hat, y, top_k=5)
-        self.log('top1-accuracy', {'val': acc1}, on_epoch=True, on_step=False)
-        self.log('top5-accuracy', {'val': acc5}, on_epoch=True, on_step=False)
+        if stage == 'test':
+            self.log('loss', {stage: loss})
+            self.log('top1-accuracy', {stage: acc1}, on_epoch=True, on_step=False, prog_bar=True)
+            self.log('top5-accuracy', {stage: acc5}, on_epoch=True, on_step=False, prog_bar=True)
+        elif stage =='val':
+            self.log('loss', {stage: loss})
+            self.log('top1-accuracy', {stage: acc1}, on_epoch=True, on_step=False)
+            self.log('top5-accuracy', {stage: acc5}, on_epoch=True, on_step=False)
+
+        return loss, acc1, acc5
+
+    def validation_step(self, batch, batch_idx, dataloader_idx: int = 0):
+        loss, acc1, acc5 = self.evaluate(batch, stage='val')
+        self.log('loss_val', loss, add_dataloader_idx=False, logger=False)
         self.log('top1_acc_val', acc1, add_dataloader_idx=False, logger=False)
         self.log('top5_acc_val', acc5, add_dataloader_idx=False, logger=False)
         return loss
 
+    def test_step(self, batch, batch_idx):
+        self.evaluate(batch, stage='test')
+
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         x, y = batch
         y_hat = self(x)
-        # y_hat = torch.argmax(F.softmax(y_hat, dim=1), dim=1)
         return {'predictions': y_hat, 'ground_truths': y}
 
     def configure_optimizers(self):
@@ -82,7 +95,17 @@ class BaseNet(pl.LightningModule):
                                     momentum=0.9,
                                     weight_decay=self.hparams.weight_decay)
 
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True,
-                                                               mode='min', factor=0.1, patience=5)
+        if self.hparams.dataset_name == 'cifar10':
+            scheduler = OneCycleLR(
+                optimizer,
+                0.1,
+                epochs=self.trainer.max_epochs,
+                steps_per_epoch=self.hparams.steps_per_epoch,
+            )
+            return {'optimizer': optimizer,
+                    'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss_val', "interval": "step"}}
+        else:
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True,
+                                                                   mode='min', factor=0.1, patience=5)
+            return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss_val'}}
 
-        return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss_val'}}

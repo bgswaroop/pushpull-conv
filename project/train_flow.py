@@ -3,8 +3,7 @@ from pathlib import Path
 
 import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning.callbacks import TQDMProgressBar
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, TQDMProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from tqdm import tqdm
@@ -81,12 +80,15 @@ def parse_args():
 
     torch.use_deterministic_algorithms(True, warn_only=True)
     if args.dataset_name == 'imagenet' and args.task == 'classification':
-        args.max_epochs = max(70, args.max_epochs)
+        args.max_epochs = 70
         args.batch_size = 64
         args.learning_rate = 1e-1
         args.weight_decay = 1e-4
     elif args.dataset_name == 'cifar10' and args.task == 'classification':
-        pass
+        args.max_epochs = 50
+        args.batch_size = 256
+        args.learning_rate = 5e-2
+        args.weight_decay = 5e-4
 
     if args.use_push_pull:
         assert args.push_kernel_size is not None, "Invalid config: use_push_pull=True but push_kernel_size is not set!"
@@ -103,15 +105,16 @@ def train_on_clean_images(args, ray_tune=False):
     # ------------
     dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
     train_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=True)
-    # test_loader = dataset.get_test_dataloader(args.batch_size, args.num_workers)
+    test_loader = dataset.get_test_dataloader(args.batch_size, args.num_workers)
     args.num_classes = dataset.get_num_classes()
+    args.steps_per_epoch = len(train_loader)
 
     # ------------
     # model
     # ------------
     args.logger = TensorBoardLogger(save_dir=args.logs_dir, name=args.experiment_name, default_hp_metric=False,
                                     version=args.logs_version)
-    model = get_classifier(args.task, args.model)(args)
+    model = get_classifier(args)
     if args.finetune:
         raise NotImplementedError()
 
@@ -151,6 +154,7 @@ def train_on_clean_images(args, ray_tune=False):
         else:
             trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[train_loader, val_loader])
 
+    trainer.test(model, test_loader, ckpt_path=args.ckpt)
     # # ------------
     # # testing
     # # ------------

@@ -167,44 +167,44 @@ def predict_with_noise():
         with open(args.results_file) as f:
             scores.update(json.load(f)[args.corrupted_dataset_name]['scores'])
 
-    if 'clean' not in scores:
-        test_loader = clean_dataset.get_test_dataloader(args.batch_size, args.num_workers)
-        predictions = trainer.predict(model=model, dataloaders=test_loader)
-        test_predictions = torch.concat([x['predictions'] for x in predictions])
-        test_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
-        scores['clean'] = {}
-        if args.task == 'classification':
-            scores['clean']['top1'] = float(accuracy(test_predictions, test_ground_truths, top_k=1))
-            scores['clean']['top5'] = float(accuracy(test_predictions, test_ground_truths, top_k=5))
-        elif args.task == 'retrieval':
-            scores['clean'] = compute_map_score(train_predictions, train_ground_truths,
-                                                test_predictions, test_ground_truths,
-                                                args.device, return_as_float=True)
-
-    dataset = get_dataset(args.corrupted_dataset_name, args.corrupted_dataset_dir, args.num_severities)
-    corruption_types = args.corruption_types if args.corruption_types else dataset.test_corruption_types
-
-    for corruption_type in corruption_types:
-        dataset.corruption_type = corruption_type
-        scores[corruption_type] = {x: [] for x in scores['clean']}  # reset the dictionary
-        for severity_level in range(1, args.num_severities + 1):
-            dataset.severity_level = severity_level
-
-            test_loader = dataset.get_test_dataloader(args.batch_size, num_workers=args.num_workers)
-            print(f'Predicting corruption - {corruption_type} with severity level {severity_level}')
-            predictions = trainer.predict(model=model, dataloaders=test_loader)
-            test_predictions = torch.concat([x['predictions'] for x in predictions])
-            test_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
-
-            if args.task == 'classification':
-                scores[corruption_type]['top1'].append(float(accuracy(test_predictions, test_ground_truths, top_k=1)))
-                scores[corruption_type]['top5'].append(float(accuracy(test_predictions, test_ground_truths, top_k=5)))
-            elif args.task == 'retrieval':
-                map_score = compute_map_score(train_predictions, train_ground_truths,
-                                              test_predictions, test_ground_truths,
-                                              args.device, return_as_float=True)
-                for item in scores['clean']:
-                    scores[corruption_type][item].append(map_score[item])
+    # if 'clean' not in scores:
+    #     test_loader = clean_dataset.get_test_dataloader(args.batch_size, args.num_workers)
+    #     predictions = trainer.predict(model=model, dataloaders=test_loader)
+    #     test_predictions = torch.concat([x['predictions'] for x in predictions])
+    #     test_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
+    #     scores['clean'] = {}
+    #     if args.task == 'classification':
+    #         scores['clean']['top1'] = float(accuracy(test_predictions, test_ground_truths, top_k=1))
+    #         scores['clean']['top5'] = float(accuracy(test_predictions, test_ground_truths, top_k=5))
+    #     elif args.task == 'retrieval':
+    #         scores['clean'] = compute_map_score(train_predictions, train_ground_truths,
+    #                                             test_predictions, test_ground_truths,
+    #                                             args.device, return_as_float=True)
+    #
+    # dataset = get_dataset(args.corrupted_dataset_name, args.corrupted_dataset_dir, args.num_severities)
+    # corruption_types = args.corruption_types if args.corruption_types else dataset.test_corruption_types
+    #
+    # for corruption_type in corruption_types:
+    #     dataset.corruption_type = corruption_type
+    #     scores[corruption_type] = {x: [] for x in scores['clean']}  # reset the dictionary
+    #     for severity_level in range(1, args.num_severities + 1):
+    #         dataset.severity_level = severity_level
+    #
+    #         test_loader = dataset.get_test_dataloader(args.batch_size, num_workers=args.num_workers)
+    #         print(f'Predicting corruption - {corruption_type} with severity level {severity_level}')
+    #         predictions = trainer.predict(model=model, dataloaders=test_loader)
+    #         test_predictions = torch.concat([x['predictions'] for x in predictions])
+    #         test_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
+    #
+    #         if args.task == 'classification':
+    #             scores[corruption_type]['top1'].append(float(accuracy(test_predictions, test_ground_truths, top_k=1)))
+    #             scores[corruption_type]['top5'].append(float(accuracy(test_predictions, test_ground_truths, top_k=5)))
+    #         elif args.task == 'retrieval':
+    #             map_score = compute_map_score(train_predictions, train_ground_truths,
+    #                                           test_predictions, test_ground_truths,
+    #                                           args.device, return_as_float=True)
+    #             for item in scores['clean']:
+    #                 scores[corruption_type][item].append(map_score[item])
 
     CE, mCE = compute_mean_corruption_error(scores)
     corruption_errors = {'CE': CE, 'mCE': mCE}

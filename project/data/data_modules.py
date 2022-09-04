@@ -14,7 +14,6 @@ class CIFAR10:
     def __init__(
             self,
             root: str,
-            img_size: int,
             download: bool = True,
     ) -> None:
         self.root = root
@@ -23,12 +22,12 @@ class CIFAR10:
 
         _normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
         self._transform_train = transforms.Compose([
-            transforms.Resize(img_size, InterpolationMode.BICUBIC),
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             _normalize
         ])
         self._transform_test = transforms.Compose([
-            transforms.Resize(img_size, InterpolationMode.BICUBIC),
             transforms.ToTensor(),
             _normalize
         ])
@@ -40,10 +39,7 @@ class CIFAR10:
         return train_loader
 
     def get_validation_dataloader(self, batch_size, num_workers, shuffle=False):
-        dataset = torchvision.datasets.CIFAR10(self.root, True, self._transform_test, None, self.download)
-        data_split_train, data_split_val = random_split(dataset, self._split, torch.Generator().manual_seed(99))
-        validation_dataloader = DataLoader(data_split_val, batch_size, shuffle, num_workers=num_workers)
-        return validation_dataloader
+        return self.get_test_dataloader(batch_size, num_workers, shuffle)
 
     def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
         dataset = torchvision.datasets.CIFAR10(self.root, False, self._transform_test, None, self.download)
@@ -64,7 +60,7 @@ class CIFAR10C(Dataset):
         # full dataset
         corruptions = sorted(Path(root_dir).glob('*'))
         self._corruption_dataset_files = {x.stem: x for x in corruptions if x.stem != 'labels'}
-        self._labels = np.split(np.load(root_dir.joinpath('labels.npy')), num_splits)
+        self._labels = np.split(np.load(Path(root_dir).joinpath('labels.npy')), num_splits)
 
         # corruption types
         self._all_corruption_types = set([x.stem for x in corruptions if x.stem != 'labels'])
@@ -95,8 +91,8 @@ class CIFAR10C(Dataset):
     @severity_level.setter
     def severity_level(self, value):
         self._severity_level = value - 1
-        self._corruptions = np.split(np.load(self._corruption_dataset_files[self._corruption_type]), self.num_splits)[
-            value]
+        data = np.load(self._corruption_dataset_files[self._corruption_type])
+        self._corruptions = np.split(data, self.num_splits)[value - 1]
 
     def __getitem__(self, index):
         img = self.transform(self._corruptions[index])

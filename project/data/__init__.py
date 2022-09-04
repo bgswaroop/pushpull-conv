@@ -9,8 +9,8 @@ __all__ = (
 
 def get_dataset(dataset_name, dataset_dir, img_size=224, num_severities=5):
     if dataset_name == 'cifar10':
-        dataset = CIFAR10(dataset_dir, img_size, download=True)
-    elif dataset_name == 'CIFAR-10-C-224x224':
+        dataset = CIFAR10(dataset_dir, download=True)
+    elif dataset_name == 'cifar10-c':
         dataset = CIFAR10C(dataset_dir, num_severities)
     elif dataset_name == 'imagenet':
         dataset = ImageNet(dataset_dir, img_size)

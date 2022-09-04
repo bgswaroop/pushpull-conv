@@ -179,6 +179,20 @@ class ResNet(BaseNet):
         self.bn = norm_layer(self.in_planes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
+        if args.dataset_name == 'cifar10':
+            if args.use_push_pull and args.num_push_pull_layers >= 1:
+                self.conv1 = PushPullConv2DUnit(in_channels=3, out_channels=self.in_planes,
+                                                push_kernel_size=3,
+                                                pull_kernel_size=3,
+                                                avg_kernel_size=args.avg_kernel_size,
+                                                pull_inhibition_strength=args.pull_inhibition_strength,
+                                                scale_the_outputs=args.scale_the_outputs,
+                                                stride=1, padding=1, bias=False)
+            else:
+                self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=3, stride=1, padding=1, bias=False)
+            self.maxpool = nn.Identity()
+
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
