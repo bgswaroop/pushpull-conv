@@ -148,7 +148,6 @@ class ResNet(BaseNet):
     ) -> None:
         self.save_hyperparameters(args)
         super().__init__()
-
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
@@ -168,7 +167,7 @@ class ResNet(BaseNet):
         self.base_width = width_per_group
 
         if args.use_push_pull and args.num_push_pull_layers >= 1:
-            conv1 = PushPullConv2DUnit(in_channels=3, out_channels=self.in_planes,
+            self.conv1 = PushPullConv2DUnit(in_channels=3, out_channels=self.in_planes,
                                             push_kernel_size=args.push_kernel_size,
                                             pull_kernel_size=args.pull_kernel_size,
                                             avg_kernel_size=args.avg_kernel_size,
@@ -176,24 +175,30 @@ class ResNet(BaseNet):
                                             scale_the_outputs=args.scale_the_outputs,
                                             stride=2, padding=3, bias=False)
         else:
-            conv1 = nn.Conv2d(3, self.in_planes, kernel_size=7, stride=2, padding=3, bias=False)
-        bn = norm_layer(self.in_planes)
-        relu = nn.ReLU(inplace=True)
-        maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        layer1 = self._make_layer(block, 64, layers[0])
-        layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
-        layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
-        layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
-        avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.features = nn.Sequential(conv1, bn, relu, maxpool, layer1, layer2, layer3, layer4, avgpool)
+            self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn = norm_layer(self.in_planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        fc1 = nn.Linear(512 * block.expansion, 512 * block.expansion)
-        dropout = nn.Dropout(0.5)
-        fc2 = nn.Linear(512 * block.expansion, 512 * block.expansion)
-        fc3 = nn.Linear(512 * block.expansion, self.hparams.hash_length)
-        # tanh = nn.Tanh()
-        self.classifier = nn.Sequential(fc1, relu, dropout, fc2, relu, fc3)
-        # self.classifier = nn.Linear(512 * block.expansion, self.hparams.hash_length)
+        if args.dataset_name == 'cifar10':
+            if args.use_push_pull and args.num_push_pull_layers >= 1:
+                self.conv1 = PushPullConv2DUnit(in_channels=3, out_channels=self.in_planes,
+                                                push_kernel_size=3,
+                                                pull_kernel_size=3,
+                                                avg_kernel_size=args.avg_kernel_size,
+                                                pull_inhibition_strength=args.pull_inhibition_strength,
+                                                scale_the_outputs=args.scale_the_outputs,
+                                                stride=1, padding=1, bias=False)
+            else:
+                self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=3, stride=1, padding=1, bias=False)
+            self.maxpool = nn.Identity()
+
+        self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.classifier = nn.Linear(512 * block.expansion, self.hparams.hash_length)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -251,11 +256,14 @@ class ResNet(BaseNet):
         return nn.Sequential(*layers)
 
     def forward(self, x: Tensor) -> Tensor:
-        # Features
-        x = self.features(x)
+        x = self.conv1(x)
+        x = self.maxpool(self.relu(self.bn(x)))
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.avgpool(x)
         x = torch.flatten(x, 1)
-
-        # Classifier
         x = self.classifier(x)
         return x
 

@@ -237,12 +237,9 @@ class ResNet(BaseNet):
                 norm_layer(planes * block.expansion),
             )
 
-        layers = []
-        layers.append(
-            block(
-                self.in_planes, planes, stride, downsample, self.groups, self.base_width, previous_dilation, norm_layer
-            )
-        )
+        layers = [block(
+            self.in_planes, planes, stride, downsample, self.groups, self.base_width, previous_dilation, norm_layer
+        )]
         self.in_planes = planes * block.expansion
         for _ in range(1, blocks):
             layers.append(

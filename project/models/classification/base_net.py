@@ -17,14 +17,7 @@ class BaseNet(pl.LightningModule):
         super(BaseNet, self).__init__()
 
     def training_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
-        loss = F.cross_entropy(y_hat, y)
-        self.log('loss', {'train': loss}, on_epoch=True, on_step=False)
-        acc1 = accuracy(y_hat, y, top_k=1)
-        acc5 = accuracy(y_hat, y, top_k=5)
-        self.log('top1-accuracy', {'train': acc1}, on_epoch=True, on_step=False)
-        self.log('top5-accuracy', {'train': acc5}, on_epoch=True, on_step=False)
+        loss, acc1, acc5 = self.evaluate(batch, stage='train')
         return loss
 
     def training_epoch_end(self, outputs: EPOCH_OUTPUT) -> None:
@@ -66,7 +59,7 @@ class BaseNet(pl.LightningModule):
             self.log('loss', {stage: loss})
             self.log('top1-accuracy', {stage: acc1}, on_epoch=True, on_step=False, prog_bar=True)
             self.log('top5-accuracy', {stage: acc5}, on_epoch=True, on_step=False, prog_bar=True)
-        elif stage =='val':
+        elif stage in {'train', 'val'}:
             self.log('loss', {stage: loss})
             self.log('top1-accuracy', {stage: acc1}, on_epoch=True, on_step=False)
             self.log('top5-accuracy', {stage: acc5}, on_epoch=True, on_step=False)
@@ -95,10 +88,10 @@ class BaseNet(pl.LightningModule):
                                     momentum=0.9,
                                     weight_decay=self.hparams.weight_decay)
 
-        if self.hparams.dataset_name == 'cifar10':
+        if self.hparams.dataset_name in {'cifar10', 'imagenet'}:
             scheduler = OneCycleLR(
                 optimizer,
-                0.1,
+                max_lr = 0.1,
                 epochs=self.trainer.max_epochs,
                 steps_per_epoch=self.hparams.steps_per_epoch,
             )

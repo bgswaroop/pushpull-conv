@@ -8,13 +8,14 @@ __all__ = (
 )
 
 
-def get_classifier(model):
-    if model == 'resnet18':
-        Classifier = resnet18
-    elif model == 'resnet34':
-        Classifier = resnet34
-    elif model == 'resnet50':
-        Classifier = resnet50
+def get_classifier(args):
+    if args.model == 'resnet18':
+        model = resnet18(args)
+    elif args.model == 'resnet34':
+        model = resnet34(args)
+    elif args.model == 'resnet50':
+        model = resnet50(args)
     else:
         raise ValueError('Invalid classifier')
-    return Classifier
+
+    return model

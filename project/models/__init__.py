@@ -9,6 +9,6 @@ def get_classifier(args):
     if args.task == 'classification':
         return classification.get_classifier(args)
     elif args.task == 'retrieval':
-        return retrieval.get_classifier(args.model)
+        return retrieval.get_classifier(args)
     else:
         raise ValueError('Invalid task!')

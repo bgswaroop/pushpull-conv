@@ -80,10 +80,10 @@ def parse_args():
 
     torch.use_deterministic_algorithms(True, warn_only=True)
     if args.dataset_name == 'imagenet' and args.task == 'classification':
-        args.max_epochs = 70
+        args.max_epochs = 50
         args.batch_size = 64
-        args.learning_rate = 1e-1
-        args.weight_decay = 1e-4
+        args.learning_rate = 5e-2
+        args.weight_decay = 5e-5
     elif args.dataset_name == 'cifar10' and args.task == 'classification':
         args.max_epochs = 50
         args.batch_size = 256
@@ -105,7 +105,8 @@ def train_on_clean_images(args, ray_tune=False):
     # ------------
     dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
     train_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=True)
-    test_loader = dataset.get_test_dataloader(args.batch_size, args.num_workers)
+    val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=False)
+    test_loader = dataset.get_test_dataloader(args.batch_size, args.num_workers, shuffle=False)
     args.num_classes = dataset.get_num_classes()
     args.steps_per_epoch = len(train_loader)
 
@@ -136,25 +137,26 @@ def train_on_clean_images(args, ray_tune=False):
     else:
         raise ValueError('Invalid task!')
     lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
-    progress_bar_callback = LitProgressBar(refresh_rate=100)
+    progress_bar_callback = LitProgressBar(refresh_rate=1)
 
     callbacks = [ckpt_callback1, ckpt_callback2, ckpt_callback3, lr_monitor_callback, progress_bar_callback]
     callbacks = callbacks + [tune_callback] if ray_tune else callbacks
 
-    trainer = pl.Trainer.from_argparse_args(args, logger=args.logger, callbacks=callbacks)
+    trainer = pl.Trainer.from_argparse_args(args, logger=args.logger, callbacks=callbacks, devices=1)
 
     if args.task == 'classification':
-        val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=False)
         trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[val_loader])
+        trainer.test(model, test_loader)
     elif args.task == 'retrieval':
-        val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=True)
-        if args.dataset_name == 'imagenet100':
-            balanced_train_loader = dataset.get_100_class_balanced_train_dataloader(args.batch_size, args.num_workers)
-            trainer.fit(model, balanced_train_loader, ckpt_path=args.ckpt, val_dataloaders=[train_loader, val_loader])
-        else:
-            trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[train_loader, val_loader])
-
-    trainer.test(model, test_loader, ckpt_path=args.ckpt)
+        # if args.dataset_name == 'imagenet100':
+        #     val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=True)
+        #     balanced_train_loader = dataset.get_100_class_balanced_train_dataloader(args.batch_size, args.num_workers)
+        #     trainer.fit(model, balanced_train_loader, ckpt_path=args.ckpt, val_dataloaders=[train_loader, val_loader])
+        # else:
+        retrieval_database = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
+        trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[retrieval_database, val_loader])
+        trainer.test(model, dataloaders=[retrieval_database, test_loader])
+    # trainer.test(model, test_loader, ckpt_path=args.ckpt)   #fixme: add logic for test loader
     # # ------------
     # # testing
     # # ------------

@@ -35,7 +35,8 @@ class CIFAR10:
     def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
         dataset = torchvision.datasets.CIFAR10(self.root, True, self._transform_train, None, self.download)
         data_split_train, data_split_val = random_split(dataset, self._split, torch.Generator().manual_seed(99))
-        train_loader = DataLoader(data_split_train, batch_size, shuffle, num_workers=num_workers)
+        train_loader = DataLoader(data_split_train, batch_size, shuffle, num_workers=num_workers,
+                                  persistent_workers=True)
         return train_loader
 
     def get_validation_dataloader(self, batch_size, num_workers, shuffle=False):
@@ -43,7 +44,8 @@ class CIFAR10:
 
     def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
         dataset = torchvision.datasets.CIFAR10(self.root, False, self._transform_test, None, self.download)
-        test_dataloader = DataLoader(dataset, batch_size, shuffle, num_workers=num_workers)
+        test_dataloader = DataLoader(dataset, batch_size, shuffle, num_workers=num_workers,
+                                     persistent_workers=True)
         return test_dataloader
 
     @staticmethod
@@ -103,7 +105,7 @@ class CIFAR10C(Dataset):
         return len(self._labels[self._severity_level])
 
     def get_test_dataloader(self, batch_size, num_workers):
-        test_dataloader = DataLoader(self, batch_size=batch_size, num_workers=num_workers)
+        test_dataloader = DataLoader(self, batch_size=batch_size, num_workers=num_workers, persistent_workers=True)
         return test_dataloader
 
     @staticmethod
@@ -218,25 +220,25 @@ class ImageNet:
     def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
         self.dataset = _ImageNetBase(self.root, 'train', self.img_size, self.use_subset)
         train_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
-                                  prefetch_factor=8, pin_memory=True)
+                                  prefetch_factor=8, pin_memory=True, persistent_workers=True)
         return train_loader
 
     def get_100_class_balanced_train_dataloader(self, batch_size, num_workers, shuffle=True):
         self.dataset = _ImageNetBase(self.root, '100-class-balanced-train', self.img_size, self.use_subset)
         train_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
-                                  prefetch_factor=8, pin_memory=True)
+                                  prefetch_factor=8, pin_memory=True, persistent_workers=True)
         return train_loader
 
     def get_validation_dataloader(self, batch_size=None, num_workers=None, shuffle=False):
         self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset)
         val_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
-                                prefetch_factor=8, pin_memory=True)
+                                prefetch_factor=8, pin_memory=True, persistent_workers=True)
         return val_loader
 
     def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
         self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset)
         test_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
-                                 prefetch_factor=8, pin_memory=True)
+                                 prefetch_factor=8, pin_memory=True, persistent_workers=True)
         return test_loader
 
     def get_num_classes(self):
@@ -325,5 +327,5 @@ class ImageNetC:
         return len(self.labels)
 
     def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
-        test_dataloader = DataLoader(self, batch_size, shuffle, num_workers=num_workers)
+        test_dataloader = DataLoader(self, batch_size, shuffle, num_workers=num_workers, persistent_workers=True)
         return test_dataloader
