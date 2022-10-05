@@ -68,27 +68,24 @@ class PushPullConv2DUnit(torch.nn.Module):
 
     def forward(self, x):
         push_response = F.relu_(self.push_conv(x))
-        pull_conv_kernel = F.interpolate(-self.push_conv.weight, size=self.pull_kernel_size, mode='bilinear')
-        pull_response = F.relu_(F.conv2d(input=x, weight=pull_conv_kernel, stride=self.stride, padding=self.padding,
-                                         dilation=self.dilation, groups=self.groups))
+        # pull_conv_kernel = F.interpolate(-self.push_conv.weight, size=self.pull_kernel_size, mode='bilinear')
+        pull_response = F.relu_(F.conv2d(input=x, weight=-self.push_conv.weight, stride=self.stride,
+                                         padding=self.padding, dilation=self.dilation, groups=self.groups))
 
         if self.avg:
-            avg_pull_response = self.avg(pull_response)
-            x_out = F.relu_(push_response - self.pull_inhibition_strength * avg_pull_response)
-        else:
-            avg_pull_response = None
+            pull_response = self.avg(pull_response)
+        # else:
+            # avg_pull_response = None
             # x_out = F.relu_(push_response - self.pull_inhibition_strength.view((1, -1, 1, 1)) * pull_response)
-            x_out = F.relu_(push_response - self.pull_inhibition_strength * pull_response)
+        x_out = F.relu_(push_response - self.pull_inhibition_strength * pull_response)
 
-        if self.scale_the_outputs:
-            ratio = torch.amax(push_response, dim=(2, 3), keepdim=True) / \
-                    (torch.amax(x_out, dim=(2, 3), keepdim=True) + 1e-20)
-            x_out_scaled = x_out * ratio
-        else:
-            x_out_scaled = x_out
+        # if self.scale_the_outputs:
+        #     ratio = torch.amax(push_response, dim=(2, 3), keepdim=True) / \
+        #             (torch.amax(x_out, dim=(2, 3), keepdim=True) + 1e-20)
+        #     x_out = x_out * ratio
 
         if self.bias is not None:
-            x_out_scaled = x_out_scaled + self.bias.view((1, -1, 1, 1))
+            x_out = x_out + self.bias.view((1, -1, 1, 1))
 
         # plot_push_pull_kernels(push_response, pull_response, avg_pull_response, x, x_out, x_out_scaled, k=0)
-        return x_out_scaled
+        return x_out

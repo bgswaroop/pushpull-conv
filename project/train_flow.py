@@ -5,6 +5,7 @@ import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, TQDMProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.strategies import DDPStrategy
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from tqdm import tqdm
 
@@ -52,9 +53,13 @@ def parse_args():
     parser.add_argument('--task', default='classification', type=str, required=True,
                         choices=['classification', 'retrieval'])
 
-    parser.add_argument('--learning_rate', type=float, default=3e-4)
+    parser.add_argument('--lr_base', type=float, default=0.1)
+    # parser.add_argument('--lr_start', type=float, default=1e-3)  # for three-phase lr schedule
+    # parser.add_argument('--lr_peak', type=float, default=1e-1)  # for three-phase lr schedule
+    # parser.add_argument('--lr_end', type=float, default=1e-4)  # for three-phase lr schedule
+
     parser.add_argument('--lr_multiplier', type=float, default=1e-2)  # todo: deprecate if not necessary for CSQ Hash
-    parser.add_argument('--weight_decay', type=float, default=0.004)  # regularization
+    parser.add_argument('--weight_decay', type=float, default=1e-4)  # regularization
     parser.add_argument('--hash_length', type=int, default=48)
     parser.add_argument('--quantization_weight', type=float, default=0.01)
 
@@ -72,22 +77,31 @@ def parse_args():
     #     args.max_epochs = 60
 
     assert Path(args.dataset_dir).exists(), 'dataset_dir does not exists!'
-    assert Path(args.logs_dir).exists(), 'logs_dir does not exists!'
-    Path(args.logs_dir).joinpath(args.experiment_name).mkdir(exist_ok=True)
+    # assert Path(args.logs_dir).exists(), 'logs_dir does not exists!'
+    Path(args.logs_dir).joinpath(args.experiment_name).mkdir(exist_ok=True, parents=True)
 
     if args.finetune:
         assert Path(args.finetune_ckpt).exists(), 'finetune_ckpt path does not exists!'
 
     torch.use_deterministic_algorithms(True, warn_only=True)
-    if args.dataset_name == 'imagenet' and args.task == 'classification':
-        args.max_epochs = 50
-        args.batch_size = 64
-        args.learning_rate = 5e-2
-        args.weight_decay = 5e-5
-    elif args.dataset_name == 'cifar10' and args.task == 'classification':
+    # if args.dataset_name in {'imagenet100', 'imagenet200'}:
+    #     args.max_epochs = 50
+    #     args.batch_size = 64
+    #     args.lr_base = 5e-2
+    #     args.weight_decay = 5e-5
+    if args.dataset_name in {'imagenet', 'imagenet100', 'imagenet200'}:
+        args.max_epochs = 90
+        args.batch_size = 256
+        args.lr_base = 0.1
+        args.lr_scheduler = 'step_lr'
+        args.lr_step_size = 30  # epochs
+        args.lr_gamma = 0.1
+        args.weight_decay = 1e-4
+    elif args.dataset_name == 'cifar10':
+        # The following config is not stable for ResNet50 + cifar10 + retrieval
         args.max_epochs = 50
         args.batch_size = 256
-        args.learning_rate = 5e-2
+        args.lr_base = 5e-2
         args.weight_decay = 5e-4
 
     if args.use_push_pull:
@@ -113,8 +127,9 @@ def train_on_clean_images(args, ray_tune=False):
     # ------------
     # model
     # ------------
-    args.logger = TensorBoardLogger(save_dir=args.logs_dir, name=args.experiment_name, default_hp_metric=False,
-                                    version=args.logs_version)
+    logger = TensorBoardLogger(save_dir=args.logs_dir, name=args.experiment_name, default_hp_metric=False,
+                               version=args.logs_version)
+    args.logs_dir = logger.log_dir
     model = get_classifier(args)
     if args.finetune:
         raise NotImplementedError()
@@ -137,25 +152,24 @@ def train_on_clean_images(args, ray_tune=False):
     else:
         raise ValueError('Invalid task!')
     lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
-    progress_bar_callback = LitProgressBar(refresh_rate=1)
+    progress_bar_callback = LitProgressBar(refresh_rate=200)
 
     callbacks = [ckpt_callback1, ckpt_callback2, ckpt_callback3, lr_monitor_callback, progress_bar_callback]
     callbacks = callbacks + [tune_callback] if ray_tune else callbacks
 
-    trainer = pl.Trainer.from_argparse_args(args, logger=args.logger, callbacks=callbacks, devices=1)
+    trainer = pl.Trainer.from_argparse_args(args, logger=logger, callbacks=callbacks,
+                                            # gpus=[0],
+                                            # auto_select_gpus=True,
+                                            strategy=DDPStrategy(find_unused_parameters=False),
+                                            )
 
     if args.task == 'classification':
         trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[val_loader])
-        trainer.test(model, test_loader)
+        # trainer.test(model, test_loader)
     elif args.task == 'retrieval':
-        # if args.dataset_name == 'imagenet100':
-        #     val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=True)
-        #     balanced_train_loader = dataset.get_100_class_balanced_train_dataloader(args.batch_size, args.num_workers)
-        #     trainer.fit(model, balanced_train_loader, ckpt_path=args.ckpt, val_dataloaders=[train_loader, val_loader])
-        # else:
         retrieval_database = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
         trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[retrieval_database, val_loader])
-        trainer.test(model, dataloaders=[retrieval_database, test_loader])
+        # trainer.test(model, dataloaders=[retrieval_database, test_loader])
     # trainer.test(model, test_loader, ckpt_path=args.ckpt)   #fixme: add logic for test loader
     # # ------------
     # # testing

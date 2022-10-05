@@ -5,11 +5,9 @@ from pathlib import Path
 
 import pytorch_lightning as pl
 import torch
-from torchmetrics.functional import accuracy
 
 from data import get_dataset
 from models import get_classifier
-from models.utils import compute_map_score
 
 
 def compute_mean_corruption_error(scores):
@@ -92,18 +90,18 @@ def parse_args():
     parser.add_argument('--task', default='classification', type=str, required=False,
                         choices=['classification', 'retrieval'])
 
-    parser.add_argument('--lr_base', type=float, default=3e-4)  # fixme: why is this required in predict flow?
-    parser.add_argument('--weight_decay', type=float, default=0.004)  # fixme: why is this required in predict flow?
+    parser.add_argument('--lr_base', type=float, default=3e-4)
+    parser.add_argument('--weight_decay', type=float, default=0.004)  # regularization
 
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
 
-    # if not args.accelerator:
-    #     args.accelerator = 'gpu'
-    # if args.accelerator == 'gpu':
-    #     args.device = torch.device(f'cuda:{torch.cuda.current_device()}')
-    # else:
-    #     args.device = torch.device(f'cpu')
+    if not args.accelerator:
+        args.accelerator = 'gpu'
+    if args.accelerator == 'gpu':
+        args.device = torch.device(f'cuda:{torch.cuda.current_device()}')
+    else:
+        args.device = torch.device(f'cpu')
 
     # todo: deprecate num_severities and fix ot to 5
     if args.corrupted_dataset_name in {'CIFAR-10-C-EnhancedSeverity'}:
@@ -128,7 +126,7 @@ def parse_args():
         args.baseline_results_file.parent.mkdir(exist_ok=True, parents=True)
     else:
         args.baseline_results_file = Path(args.baseline_model_logs_dir).joinpath('results/all_scores.json')
-        # assert args.baseline_results_file.exists(), 'Results file does not exists in the baseline_model_logs_dir'
+        assert args.baseline_results_file.exists(), 'Results file does not exists in the baseline_model_logs_dir'
 
     model_ckpt = torch.load(args.model_ckpt)
     args.num_classes = model_ckpt['hyper_parameters'].get('num_classes', None)
@@ -153,77 +151,63 @@ def predict_with_noise():
     model = get_classifier(args)
     model.load_state_dict(torch.load(args.model_ckpt)['state_dict'])
 
-    trainer = pl.Trainer.from_argparse_args(args)  # todo: test the behaviour after removing devices=1
+    trainer = pl.Trainer.from_argparse_args(args, devices=1)
 
     clean_dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
 
-    if args.task == 'retrieval':
-        train_loader = clean_dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
-        predictions = trainer.predict(model=model, dataloaders=train_loader)
-        train_predictions = torch.concat([x['predictions'] for x in predictions])
-        train_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
+    # if args.task == 'retrieval':
+    #     train_loader = clean_dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
+    #     predictions = trainer.predict(model=model, dataloaders=train_loader)
+    #     train_predictions = torch.concat([x['predictions'] for x in predictions])
+    #     train_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
 
     scores = defaultdict(dict)
-    without_baseline_file = args.results_file.parent.joinpath('wout_baseline.json')
     if args.results_file.exists():
         with open(args.results_file) as f:
             scores.update(json.load(f)[args.corrupted_dataset_name]['scores'])
-    elif without_baseline_file.exists():
-        with open(without_baseline_file) as f:
-            scores.update(json.load(f)[args.corrupted_dataset_name]['scores'])
 
-    if 'clean' not in scores:
-        test_loader = clean_dataset.get_test_dataloader(args.batch_size, args.num_workers)
-        predictions = trainer.predict(model=model, dataloaders=test_loader)
-        test_predictions = torch.concat([x['predictions'] for x in predictions])
-        test_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
-        scores['clean'] = {}
-        if args.task == 'classification':
-            scores['clean']['top1'] = float(accuracy(test_predictions, test_ground_truths, top_k=1))
-            scores['clean']['top5'] = float(accuracy(test_predictions, test_ground_truths, top_k=5))
-        elif args.task == 'retrieval':
-            scores['clean'] = compute_map_score(train_predictions, train_ground_truths,
-                                                test_predictions, test_ground_truths,
-                                                args.device, return_as_float=True)
+    # if 'clean' not in scores:
+    #     test_loader = clean_dataset.get_test_dataloader(args.batch_size, args.num_workers)
+    #     predictions = trainer.predict(model=model, dataloaders=test_loader)
+    #     test_predictions = torch.concat([x['predictions'] for x in predictions])
+    #     test_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
+    #     scores['clean'] = {}
+    #     if args.task == 'classification':
+    #         scores['clean']['top1'] = float(accuracy(test_predictions, test_ground_truths, top_k=1))
+    #         scores['clean']['top5'] = float(accuracy(test_predictions, test_ground_truths, top_k=5))
+    #     elif args.task == 'retrieval':
+    #         scores['clean'] = compute_map_score(train_predictions, train_ground_truths,
+    #                                             test_predictions, test_ground_truths,
+    #                                             args.device, return_as_float=True)
 
+    # print([k for k, v in scores['clean'].items()])
     dataset = get_dataset(args.corrupted_dataset_name, args.corrupted_dataset_dir, args.num_severities)
     corruption_types = args.corruption_types if args.corruption_types else dataset.test_corruption_types
 
-    for corruption_type in corruption_types:
-    
-        if corruption_type in scores:
-            continue
-    
-        dataset.corruption_type = corruption_type
-        scores[corruption_type] = {x: [] for x in scores['clean']}  # reset the dictionary
-        for severity_level in range(1, args.num_severities + 1):
-            dataset.severity_level = severity_level
-
-            test_loader = dataset.get_test_dataloader(args.batch_size, num_workers=args.num_workers)
-            print(f'Predicting corruption - {corruption_type} with severity level {severity_level}')
-            predictions = trainer.predict(model=model, dataloaders=test_loader)
-            test_predictions = torch.concat([x['predictions'] for x in predictions])
-            test_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
-
-            if args.task == 'classification':
-                scores[corruption_type]['top1'].append(float(accuracy(test_predictions, test_ground_truths, top_k=1)))
-                scores[corruption_type]['top5'].append(float(accuracy(test_predictions, test_ground_truths, top_k=5)))
-            elif args.task == 'retrieval':
-                map_score = compute_map_score(train_predictions, train_ground_truths,
-                                              test_predictions, test_ground_truths,
-                                              args.device, return_as_float=True)
-                for item in scores['clean']:
-                    scores[corruption_type][item].append(map_score[item])
+    # for corruption_type in corruption_types:
+    #     dataset.corruption_type = corruption_type
+    #     scores[corruption_type] = {x: [] for x in scores['clean']}  # reset the dictionary
+    #     for severity_level in range(1, args.num_severities + 1):
+    #         dataset.severity_level = severity_level
+    #
+    #         test_loader = dataset.get_test_dataloader(args.batch_size, num_workers=args.num_workers)
+    #         print(f'Predicting corruption - {corruption_type} with severity level {severity_level}')
+    #         predictions = trainer.predict(model=model, dataloaders=test_loader)
+    #         test_predictions = torch.concat([x['predictions'] for x in predictions])
+    #         test_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
+    #
+    #         if args.task == 'classification':
+    #             scores[corruption_type]['top1'].append(float(accuracy(test_predictions, test_ground_truths, top_k=1)))
+    #             scores[corruption_type]['top5'].append(float(accuracy(test_predictions, test_ground_truths, top_k=5)))
+    #         elif args.task == 'retrieval':
+    #             map_score = compute_map_score(train_predictions, train_ground_truths,
+    #                                           test_predictions, test_ground_truths,
+    #                                           args.device, return_as_float=True)
+    #             for item in scores['clean']:
+    #                 scores[corruption_type][item].append(map_score[item])
 
     CE, mCE = compute_mean_corruption_error(scores)
     corruption_errors = {'CE': CE, 'mCE': mCE}
-
-    with open(without_baseline_file, 'w+') as f:
-        results_summary = {args.corrupted_dataset_name: {
-            'scores': scores,
-            'errors': corruption_errors
-        }}
-        json.dump(results_summary, f, indent=2, sort_keys=True)
 
     # Compute mCE and relative-mCE scores from mAP w.r.t a baseline
     if args.baseline_results_file.exists():

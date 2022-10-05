@@ -17,7 +17,7 @@ class BaseNet(pl.LightningModule):
         #     margin=self.hparams.hash_length * 2,
         #     alpha=self.hparams.quantization_weight
         # )
-        hash_targets_file = Path(self.hparams.logger.log_dir).joinpath('hash_targets.pt')
+        hash_targets_file = Path(self.hparams.logs_dir).joinpath('hash_targets.pt')
         hash_targets = torch.load(hash_targets_file) if hash_targets_file.exists() else None
         self.loss = CSQLoss(
             num_classes=self.hparams.num_classes,
@@ -26,12 +26,22 @@ class BaseNet(pl.LightningModule):
             hash_targets=hash_targets,
         )
         if not hash_targets_file.exists():
-            Path(self.hparams.logger.log_dir).mkdir(exist_ok=True, parents=True)
+            Path(self.hparams.logs_dir).mkdir(exist_ok=True, parents=True)
             torch.save(self.loss.hash_targets, hash_targets_file)
 
+    def on_train_start(self) -> None:
+        self.loss.hash_targets = self.loss.hash_targets.to(self.device)
+
+    def on_validation_start(self) -> None:
+        self.loss.hash_targets = self.loss.hash_targets.to(self.device)
+
+    def on_predict_start(self) -> None:
+        self.loss.hash_targets = self.loss.hash_targets.to(self.device)
+
+    def on_test_start(self) -> None:
+        self.loss.hash_targets = self.loss.hash_targets.to(self.device)
+
     def evaluate_step(self, batch, batch_idx, dataloader_idx=0, *, stage=None):
-        if batch_idx == 0:
-            self.loss.hash_targets = self.loss.hash_targets.to(self.device)
         x, y = batch
         y_hat = self(x)
         loss = self.loss(y_hat, y)
@@ -59,34 +69,34 @@ class BaseNet(pl.LightningModule):
         hash_code, y, loss = self.evaluate_step(batch, batch_idx, stage='train')
         return loss
 
-    def training_epoch_end(self, outputs) -> None:
-        if hasattr(self, 'features'):
-            first_layer = self.features._modules['0']
-        elif hasattr(self, 'conv1'):
-            first_layer = self.conv1
-        else:
-            print('\nWarning - Push Pull layer not found. Skipping saving the logs')
-            return
-
-        if type(first_layer) != PushPullConv2DUnit:
-            print('\nWarning - Push Pull layer not found. Skipping saving the logs')
-            return
-
-        Path(self.logger.log_dir).mkdir(exist_ok=True, parents=True)
-        log_file = Path(self.logger.log_dir).joinpath('layer0_pull_inhibition_strength.csv')
-
-        if type(first_layer.pull_inhibition_strength) == float:
-            data = torch.Tensor([first_layer.pull_inhibition_strength])
-        else:
-            data = first_layer.pull_inhibition_strength.cpu()
-        index = [str(x) for x in range(len(data))]
-        if log_file.exists():
-            df = pd.read_csv(log_file)
-        else:
-            df = pd.DataFrame(columns=index)
-        data = pd.DataFrame(data.view((1, -1)).detach(), columns=index)
-        df = pd.concat([df, data], ignore_index=True)
-        df.to_csv(log_file, index=False)
+    # def training_epoch_end(self, outputs) -> None:
+    #     if hasattr(self, 'features'):
+    #         first_layer = self.features._modules['0']
+    #     elif hasattr(self, 'conv1'):
+    #         first_layer = self.conv1
+    #     else:
+    #         print('\nWarning - Push Pull layer not found. Skipping saving the logs')
+    #         return
+    #
+    #     if type(first_layer) != PushPullConv2DUnit:
+    #         print('\nWarning - Push Pull layer not found. Skipping saving the logs')
+    #         return
+    #
+    #     Path(self.logger.log_dir).mkdir(exist_ok=True, parents=True)
+    #     log_file = Path(self.logger.log_dir).joinpath('layer0_pull_inhibition_strength.csv')
+    #
+    #     if type(first_layer.pull_inhibition_strength) == float:
+    #         data = torch.Tensor([first_layer.pull_inhibition_strength])
+    #     else:
+    #         data = first_layer.pull_inhibition_strength.cpu()
+    #     index = [str(x) for x in range(len(data))]
+    #     if log_file.exists():
+    #         df = pd.read_csv(log_file)
+    #     else:
+    #         df = pd.DataFrame(columns=index)
+    #     data = pd.DataFrame(data.view((1, -1)).detach(), columns=index)
+    #     df = pd.concat([df, data], ignore_index=True)
+    #     df.to_csv(log_file, index=False)
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         stage = ['database', 'val'][dataloader_idx]
@@ -114,7 +124,7 @@ class BaseNet(pl.LightningModule):
     def configure_optimizers(self):
 
         optimizer = torch.optim.SGD(self.parameters(),
-                                    lr=self.hparams.learning_rate,
+                                    lr=self.hparams.lr_base,
                                     momentum=0.9,
                                     weight_decay=self.hparams.weight_decay)
         scheduler = OneCycleLR(
@@ -124,17 +134,17 @@ class BaseNet(pl.LightningModule):
             steps_per_epoch=self.hparams.steps_per_epoch,
         )
         return {'optimizer': optimizer,
-                'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss_val', "interval": "step"}}
+                'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss_val', "interval": "epoch"}}
 
         # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True,
         #                                                        mode='min', factor=0.1, patience=5)
         # return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss_val'}}
         # params_list = [
-        #     {'params': self.features.parameters(), 'lr': self.hparams.learning_rate * self.hparams.lr_multiplier},
+        #     {'params': self.features.parameters(), 'lr': self.hparams.lr_base * self.hparams.lr_multiplier},
         #     {'params': self.classifier.parameters()}
         # ]
         # optimizer = torch.optim.Adam(self.parameters(),
-        #                              lr=self.hparams.learning_rate,
+        #                              lr=self.hparams.lr_base,
         #                              weight_decay=self.hparams.weight_decay)
         # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True,
         #                                                        mode='min', factor=0.1, patience=5)

@@ -83,21 +83,26 @@ def save_scores(exp_names, scores_on_clean_dataset, errors, errors_wrt_baseline,
     for filename, df in summary_results.items():
         df.to_csv(save_dir.joinpath(filename))
 
+
 def run_flow():
-    compile_scores_dir = Path(r'/data/p288722/runtime_data/pushpull-conv/resnet50_imagenet200_classification')
-    dataset_name = 'imagenet200-c'
-    baseline_exp_dir = '/data/p288722/runtime_data/pushpull-conv/resnet50_imagenet200_classification/resnet50'
+    compile_scores_dir = Path(r'/home/guru/runtime_data/pushpull-conv/resnet18_imagenet100_classification')
+    dataset_name = 'imagenet100-c'
+    baseline_exp_dir = '/home/guru/runtime_data/pushpull-conv/resnet18_imagenet100_classification/resnet18'
     experiments = [
-        'resnet50',
-        # 'resnet50_pp7x7_avg3',
-        'resnet50_pp7x7_avg3_inh1',
-        'resnet50_pp7x7_avg3_inh2',
-        'resnet50_pp7x7_avg3_inh3',
-        'resnet50_pp7x7_avg3_inh4',
-        'resnet50_pp7x7_avg5_inh1',
-        'resnet50_pp7x7_avg5_inh2',
-        'resnet50_pp7x7_avg5_inh3',
-        'resnet50_pp7x7_avg5_inh4',
+        'resnet18',
+        # 'resnet18_pp7x7_avg3',
+        'resnet18_pp7x7_avg3_inh1',
+        'resnet18_pp7x7_avg3_inh2',
+        'resnet18_pp7x7_avg3_inh3',
+        'resnet18_pp7x7_avg3_inh4',
+        'resnet18_pp7x7_avg3_inh5',
+        'resnet18_pp7x7_avg3_inh6',
+        'resnet18_pp7x7_avg5_inh1',
+        'resnet18_pp7x7_avg5_inh2',
+        'resnet18_pp7x7_avg5_inh3',
+        'resnet18_pp7x7_avg5_inh4',
+        'resnet18_pp7x7_avg5_inh5',
+        'resnet18_pp7x7_avg5_inh6',
     ]
 
     errors_wrt_baseline = []
