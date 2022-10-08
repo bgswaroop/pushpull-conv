@@ -172,9 +172,9 @@ class ResNet(BaseNet):
                                             pull_kernel_size=args.pull_kernel_size,
                                             avg_kernel_size=args.avg_kernel_size,
                                             pull_inhibition_strength=args.pull_inhibition_strength,
-                                            stride=2, padding=3, bias=False)
+                                            stride=2, padding=3)
         else:
-            self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=7, stride=2, padding=3, bias=False)
+            self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=7, stride=2, padding=3)
         self.bn = norm_layer(self.in_planes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -186,9 +186,9 @@ class ResNet(BaseNet):
                                                 pull_kernel_size=3,
                                                 avg_kernel_size=args.avg_kernel_size,
                                                 pull_inhibition_strength=args.pull_inhibition_strength,
-                                                stride=1, padding=1, bias=False)
+                                                stride=1, padding=1)
             else:
-                self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=3, stride=1, padding=1, bias=False)
+                self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=3, stride=1, padding=1)
             self.maxpool = nn.Identity()
 
         self.layer1 = self._make_layer(block, 64, layers[0])

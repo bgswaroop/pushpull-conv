@@ -49,8 +49,6 @@ def parse_args():
     parser.add_argument('--pull_kernel_size', type=int, default=None, help='Size of the pull filter (int)')
     parser.add_argument('--avg_kernel_size', type=int, default=None, help='Size of the avg filter (int)')
     parser.add_argument('--pull_inhibition_strength', type=float, default=1.0)
-    parser.add_argument('--scale_the_outputs', default=False, action=argparse.BooleanOptionalAction)  # todo: deprecate
-    parser.add_argument('--bias', default=True, action=argparse.BooleanOptionalAction)  # todo: deprecate
     parser.add_argument('--model', default='AlexNet', type=str, required=True)
     parser.add_argument('--task', default='classification', type=str, required=True,
                         choices=['classification', 'retrieval'])

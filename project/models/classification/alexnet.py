@@ -16,7 +16,7 @@ class AlexNet(BaseNet):
                                        avg_kernel_size=args.avg_kernel_size,
                                        pull_inhibition_strength=args.pull_inhibition_strength,
                                        stride=4,
-                                       padding=2, bias=args.bias)
+                                       padding=2)
         else:
             conv1 = nn.Conv2d(in_channels=3, out_channels=64, kernel_size=(11, 11), stride=4, padding=2)
 
