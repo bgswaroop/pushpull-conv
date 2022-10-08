@@ -14,7 +14,6 @@ class ConvNet(BaseNet):
                                             pull_kernel_size=args.pull_kernel_size,
                                             avg_kernel_size=args.avg_kernel_size,
                                             pull_inhibition_strength=args.pull_inhibition_strength,
-                                            scale_the_outputs=args.scale_the_outputs,
                                             padding='same', bias=args.bias)
         else:
             self.conv1 = torch.nn.Conv2d(in_channels=3, out_channels=32, kernel_size=(5, 5), padding='same')
@@ -25,7 +24,6 @@ class ConvNet(BaseNet):
                                             pull_kernel_size=args.pull_kernel_size,
                                             avg_kernel_size=args.avg_kernel_size,
                                             pull_inhibition_strength=args.pull_inhibition_strength,
-                                            scale_the_outputs=args.scale_the_outputs,
                                             padding='same', bias=args.bias)
         else:
             self.conv2 = torch.nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(5, 5), padding='same')

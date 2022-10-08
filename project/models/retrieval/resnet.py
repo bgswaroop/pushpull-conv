@@ -172,7 +172,6 @@ class ResNet(BaseNet):
                                             pull_kernel_size=args.pull_kernel_size,
                                             avg_kernel_size=args.avg_kernel_size,
                                             pull_inhibition_strength=args.pull_inhibition_strength,
-                                            scale_the_outputs=args.scale_the_outputs,
                                             stride=2, padding=3, bias=False)
         else:
             self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=7, stride=2, padding=3, bias=False)
@@ -187,7 +186,6 @@ class ResNet(BaseNet):
                                                 pull_kernel_size=3,
                                                 avg_kernel_size=args.avg_kernel_size,
                                                 pull_inhibition_strength=args.pull_inhibition_strength,
-                                                scale_the_outputs=args.scale_the_outputs,
                                                 stride=1, padding=1, bias=False)
             else:
                 self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=3, stride=1, padding=1, bias=False)

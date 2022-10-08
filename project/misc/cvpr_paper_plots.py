@@ -27,14 +27,15 @@ def plot_mCE_versus_clean_error():
     plt.title(plt_title, pad=12, fontsize=11)
     plt.tick_params(axis='x', labelsize=8)
     plt.tick_params(axis='y', labelsize=8)
-    plt.locator_params(axis='y', nbins=3)
+    plt.locator_params(axis='y', nbins=5)
     plt.locator_params(axis='x', nbins=5)
 
     plt.xlabel('Clean error', labelpad=8, fontsize=10)
     plt.ylabel('Absolute mCE', labelpad=8, fontsize=10)
-    plt.legend(bbox_to_anchor=(1.04, 1.2), loc="upper left", prop={'size': 8})
-    plt.tight_layout()
-    plt.savefig(f'_plot_figures/{Path(filename).parent.name}.svg')
+    plt.legend(bbox_to_anchor=(1.05, 1.06), loc="upper left", prop={'size': 8}, frameon=False)
+    plt.tight_layout(pad=0.5)
+    # plt.savefig(f'_plot_figures/figure_{Path(filename).parent.name}.eps', format='eps')
+    plt.savefig(f'_plot_figures/figure_{Path(filename).parent.name}_30epochs.png')
     plt.show()
 
 

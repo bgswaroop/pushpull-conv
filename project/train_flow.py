@@ -26,8 +26,10 @@ def parse_args():
     parser.add_argument('--img_size', default=224, type=int, choices=[32, 224])
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--dataset_dir', default='/data/p288722/datasets/cifar', type=str)
-    parser.add_argument('--dataset_name', default='cifar10', choices=['cifar10',
-                                                                      'imagenet', 'imagenet200', 'imagenet100'])
+    parser.add_argument('--dataset_name', default='cifar10',
+                        help="'cifar10', 'imagenet100', 'imagenet200', 'imagenet'"
+                             "or add a suffix '_20pc' for a 20 percent stratified training subset."
+                             "'_20pc' is an example, can be any float [1.0, 99.0]")
     parser.add_argument('--finetune', action=argparse.BooleanOptionalAction, default=False)  # todo: deprecate
     parser.add_argument('--finetune_ckpt', type=str, default=None)  # todo: deprecate
     parser.add_argument('--ckpt', type=str, default=None)  # ckpt to continue training
@@ -66,13 +68,13 @@ def parse_args():
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
 
-    # Validate args
-    if not args.accelerator:
-        args.accelerator = 'gpu'
-    if args.accelerator == 'gpu':
-        args.device = torch.device(f'cuda:{torch.cuda.current_device()}')
-    else:
-        args.device = torch.device(f'cpu')
+    # # Validate args
+    # if not args.accelerator:
+    #     args.accelerator = 'gpu'
+    # if args.accelerator == 'gpu':
+    #     args.device = torch.device(f'cuda:{torch.cuda.current_device()}')
+    # else:
+    #     args.device = torch.device(f'cpu')
     # if not args.max_epochs:
     #     args.max_epochs = 60
 
@@ -89,7 +91,15 @@ def parse_args():
     #     args.batch_size = 64
     #     args.lr_base = 5e-2
     #     args.weight_decay = 5e-5
-    if args.dataset_name in {'imagenet', 'imagenet100', 'imagenet200'}:
+    if 'imagenet100' in args.dataset_name or 'imagenet200' in args.dataset_name:
+        args.max_epochs = 30
+        args.batch_size = 64
+        args.lr_base = 0.2
+        args.lr_scheduler = 'step_lr'
+        args.lr_step_size = 10  # epochs
+        args.lr_gamma = 0.1
+        args.weight_decay = 1e-4
+    elif 'imagenet' in args.dataset_name:
         args.max_epochs = 90
         args.batch_size = 256
         args.lr_base = 0.1

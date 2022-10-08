@@ -6,7 +6,6 @@ import numpy as np
 import skimage as sk
 import torch
 from matplotlib import pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from skimage.filters import gaussian
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -77,55 +76,6 @@ def compare_methods_with_noisy_test():
     plt.legend(bbox_to_anchor=(1.04, 1), borderaxespad=0)
     # plt.tight_layout(rect=[0,0,0.75,1])
     plt.savefig(r'_plot_figures/impact_of_gaussian_noise_inhibition1.png', bbox_inches="tight")
-    plt.show()
-
-
-def plot_push_pull_kernels(push_response, pull_response, avg_pull_response, x, x_out, x_out_scaled, k=0):
-    fig, ax = plt.subplots(2, 3)
-    ax1 = ax[0][0]
-    ax2 = ax[0][1]
-    ax3 = ax[1][0]
-    ax4 = ax[1][1]
-    ax5 = ax[0][2]
-    ax6 = ax[1][2]
-
-    im1 = ax1.imshow(push_response[0, k, :, :].cpu().detach().numpy())
-    divider = make_axes_locatable(ax1)
-    cax = divider.append_axes('right', size='5%', pad=0.05)
-    fig.colorbar(im1, cax=cax, orientation='vertical')
-    ax1.set_title('push_response')
-
-    im2 = ax2.imshow(x_out[0, k, :, :].cpu().detach().numpy())
-    divider = make_axes_locatable(ax2)
-    cax = divider.append_axes('right', size='5%', pad=0.05)
-    fig.colorbar(im2, cax=cax, orientation='vertical')
-    ax2.set_title('final_response')
-
-    im3 = ax3.imshow(pull_response[0, k, :, :].cpu().detach().numpy())
-    divider = make_axes_locatable(ax3)
-    cax = divider.append_axes('right', size='5%', pad=0.05)
-    fig.colorbar(im3, cax=cax, orientation='vertical')
-    ax3.set_title('pull_response')
-
-    im4 = ax4.imshow(avg_pull_response[0, k, :, :].cpu().detach().numpy())
-    divider = make_axes_locatable(ax4)
-    cax = divider.append_axes('right', size='5%', pad=0.05)
-    fig.colorbar(im4, cax=cax, orientation='vertical')
-    ax4.set_title('avg_pull_response')
-
-    im5 = ax5.imshow(x[0, k, :, :].cpu().detach().numpy())
-    divider = make_axes_locatable(ax5)
-    cax = divider.append_axes('right', size='5%', pad=0.05)
-    fig.colorbar(im5, cax=cax, orientation='vertical')
-    ax5.set_title('input')
-
-    im6 = ax6.imshow(x_out_scaled[0, k, :, :].cpu().detach().numpy())
-    divider = make_axes_locatable(ax6)
-    cax = divider.append_axes('right', size='5%', pad=0.05)
-    fig.colorbar(im6, cax=cax, orientation='vertical')
-    ax6.set_title('final_response_scaled')
-
-    plt.tight_layout()
     plt.show()
 
 

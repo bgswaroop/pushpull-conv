@@ -15,7 +15,6 @@ class AlexNet(BaseNet):
                                        pull_kernel_size=args.pull_kernel_size,
                                        avg_kernel_size=args.avg_kernel_size,
                                        pull_inhibition_strength=args.pull_inhibition_strength,
-                                       scale_the_outputs=args.scale_the_outputs,
                                        stride=4,
                                        padding=2, bias=args.bias)
         else:

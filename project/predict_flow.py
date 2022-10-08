@@ -69,8 +69,11 @@ def parse_args():
     parser.add_argument('--img_size', default=224, type=int, choices=[32, 224])
     parser.add_argument('--batch_size', default=100, type=int)
     parser.add_argument('--dataset_dir', default=r'/data/p288722/datasets/cifar', type=str)
-    parser.add_argument('--dataset_name', default='cifar10', choices=['cifar10',
-                                                                      'imagenet', 'imagenet100', 'imagenet200'])
+    parser.add_argument('--dataset_name', default='cifar10',
+                        help="'cifar10', 'imagenet100', 'imagenet200', 'imagenet'"
+                             "or add a suffix '_20pc' for a 20 percent stratified training subset."
+                             "'_20pc' is an example, can be any float [1.0, 99.0]")
+
     parser.add_argument('--corrupted_dataset_dir', default=r'/data/p288722/datasets/cifar/CIFAR-10-C-224x224', type=str)
     parser.add_argument('--corrupted_dataset_name', default='CIFAR-10-C-224x224',
                         choices=['CIFAR-10-C-EnhancedSeverity', 'CIFAR-10-C-224x224', 'cifar10-c',
@@ -139,7 +142,6 @@ def parse_args():
     args.avg_kernel_size = model_ckpt['hyper_parameters'].get('avg_kernel_size', None)
     args.bias = model_ckpt['hyper_parameters'].get('bias', None)
     args.pull_inhibition_strength = model_ckpt['hyper_parameters'].get('pull_inhibition_strength', None)
-    args.scale_the_outputs = model_ckpt['hyper_parameters'].get('scale_the_outputs', None)
     args.use_push_pull = model_ckpt['hyper_parameters'].get('use_push_pull', False)
 
     return args
@@ -190,10 +192,10 @@ def predict_with_noise():
     corruption_types = args.corruption_types if args.corruption_types else dataset.test_corruption_types
 
     for corruption_type in corruption_types:
-    
+
         if corruption_type in scores:
             continue
-    
+
         dataset.corruption_type = corruption_type
         scores[corruption_type] = {x: [] for x in scores['clean']}  # reset the dictionary
         for severity_level in range(1, args.num_severities + 1):

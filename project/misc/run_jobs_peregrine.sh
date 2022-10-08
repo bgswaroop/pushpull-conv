@@ -37,7 +37,7 @@ source /data/p288722/python_venv/pushpull-conv/bin/activate
 #
 #model="resnet50"
 #experiment_name="${model}_${dataset_name}_${task}"
-#common_train_args="--img_size 32 --model ${model} --hash_length 64 --quantization_weight 1e-4 --no-scale_the_outputs --bias --num_workers 12 --batch_size 256 --max_epochs 50 --weight_decay 5e-4 --lr_base 5e-2 --task ${task} --logs_dir ${logs_dir} --experiment_name ${experiment_name} --dataset_dir ${dataset_dir} --dataset_name ${dataset_name}"
+#common_train_args="--img_size 32 --model ${model} --hash_length 64 --quantization_weight 1e-4 --bias --num_workers 12 --batch_size 256 --max_epochs 50 --weight_decay 5e-4 --lr_base 5e-2 --task ${task} --logs_dir ${logs_dir} --experiment_name ${experiment_name} --dataset_dir ${dataset_dir} --dataset_name ${dataset_name}"
 #base_dir="$logs_dir/$experiment_name"
 #predict_script="$HOME/git_code/pushpull-conv/project/predict_flow.py"
 #corruption_types="gaussian_noise shot_noise impulse_noise defocus_blur glass_blur  motion_blur zoom_blur snow frost fog brightness contrast elastic_transform pixelate jpeg_compression"

@@ -1,6 +1,7 @@
 import json
 import os
 import xml.etree.ElementTree as ET
+from collections import defaultdict
 from pathlib import Path
 
 import PIL.Image
@@ -127,11 +128,13 @@ class _ImageNetBase(Dataset):
             root: str,
             split: str,
             img_size: int,
-            use_subset: bool,
+            num_classes: int,
+            data_fraction: float = 1.0,
     ) -> None:
         self.root = Path(root)
         self.split = split
-        self.use_subset = use_subset
+        self.num_classes = num_classes
+        self.data_fraction = data_fraction
 
         _normalize = transforms.Normalize((0.485, 0.456, 0.406), (00.229, 0.224, 0.225))
         self._transform_train = transforms.Compose([
@@ -150,11 +153,6 @@ class _ImageNetBase(Dataset):
         ])
         self.data = []
         self.labels = []
-
-        if self.use_subset:
-            self.num_classes = self.use_subset
-        else:
-            self.num_classes = 1000
 
         self._setup()
         # self._lmdb_setup()
@@ -199,8 +197,24 @@ class _ImageNetBase(Dataset):
         else:
             raise ValueError('Invalid split')
 
-        if self.use_subset:
-            self._extract_subset(num_classes=self.use_subset)
+        if self.num_classes < 1000:
+            self._filter_to_subset_classes()
+
+        if self.data_fraction != 1.0:
+            self._select_stratified_data_fraction()
+
+        # from collections import Counter
+        # from matplotlib import pyplot as plt
+        # from pathlib import Path
+        #
+        # c = Counter(self.labels)
+        # plt.figure()
+        # plt.hist(c.values())
+        # plt.title('ImageNet100 - Distribution of #samples per class')
+        # plt.xlabel('num samples per class')
+        # plt.ylabel('num classes')
+        # plt.savefig(Path.cwd().joinpath('data/_plot_figures/ImageNet100_distribution.png'))
+        # plt.show()
 
         # Relabel the samples
         relabel_map = {x: idx for idx, x in enumerate(sorted(np.unique(self.labels)))}
@@ -210,9 +224,9 @@ class _ImageNetBase(Dataset):
 
         self.length = len(self.labels)
 
-    def _extract_subset(self, num_classes):
-        assert num_classes in {100, 200}, 'Invalid number of subset classes!'
-        with open(Path(__file__).parent.joinpath(f'imagenet_c/imagenet_{num_classes}_classes.json')) as f:
+    def _filter_to_subset_classes(self, ):
+        assert self.num_classes in {100, 200}, 'Invalid number of subset classes!'
+        with open(Path(__file__).parent.joinpath(f'imagenet_c/imagenet_{self.num_classes}_classes.json')) as f:
             subset_class_names = sorted(json.load(f))
             subset_class_numbers = set([self.labels_txt_to_num[x] for x in subset_class_names])
         data, labels = [], []
@@ -220,6 +234,20 @@ class _ImageNetBase(Dataset):
             if l in subset_class_numbers:
                 data.append(d)
                 labels.append(l)
+        self.data = data
+        self.labels = labels
+
+    def _select_stratified_data_fraction(self):
+        grouped_data = defaultdict(list)
+        for img_path, label in zip(self.data, self.labels):
+            grouped_data[label].append(img_path)
+        for label, images in grouped_data.items():
+            grouped_data[label] = sorted(images)[:int(len(images) * self.data_fraction)]
+        data = []
+        labels = []
+        for label, images in grouped_data.items():
+            labels.extend([label] * len(images))
+            data.extend(images)
         self.data = data
         self.labels = labels
 
@@ -250,25 +278,26 @@ class _ImageNetBase(Dataset):
 
 
 class ImageNet:
-    def __init__(self, root: str, img_size: int, use_subset=None):
+    def __init__(self, root: str, img_size: int, train_set_fraction=1.0, num_classes=1000):
         self.root = root
         self.img_size = img_size
-        self.use_subset = use_subset
+        self.num_classes = num_classes
+        self.train_set_fraction = train_set_fraction
 
     def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
-        self.dataset = _ImageNetBase(self.root, 'train', self.img_size, self.use_subset)
+        self.dataset = _ImageNetBase(self.root, 'train', self.img_size, self.num_classes, self.train_set_fraction)
         train_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
                                   prefetch_factor=16, pin_memory=True, persistent_workers=True)
         return train_loader
 
     def get_validation_dataloader(self, batch_size=None, num_workers=None, shuffle=False):
-        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset)
+        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.num_classes)
         val_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
                                 prefetch_factor=16, pin_memory=True, persistent_workers=True)
         return val_loader
 
     def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
-        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.use_subset)
+        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.num_classes)
         test_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
                                  prefetch_factor=16, pin_memory=True, persistent_workers=True)
         return test_loader

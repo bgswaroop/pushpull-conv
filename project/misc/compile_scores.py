@@ -85,9 +85,9 @@ def save_scores(exp_names, scores_on_clean_dataset, errors, errors_wrt_baseline,
 
 
 def run_flow():
-    compile_scores_dir = Path(r'/home/guru/runtime_data/pushpull-conv/resnet18_imagenet100_classification')
+    compile_scores_dir = Path(r'/home/guru/runtime_data/pushpull-conv/resnet18_imagenet100_20pc_classification')
     dataset_name = 'imagenet100-c'
-    baseline_exp_dir = '/home/guru/runtime_data/pushpull-conv/resnet18_imagenet100_classification/resnet18'
+    baseline_exp_dir = '/home/guru/runtime_data/pushpull-conv/resnet18_imagenet100_20pc_classification/resnet18'
     experiments = [
         'resnet18',
         # 'resnet18_pp7x7_avg3',

@@ -137,7 +137,6 @@ def parse_args():
     args.avg_kernel_size = model_ckpt['hyper_parameters'].get('avg_kernel_size', None)
     args.bias = model_ckpt['hyper_parameters'].get('bias', None)
     args.pull_inhibition_strength = model_ckpt['hyper_parameters'].get('pull_inhibition_strength', None)
-    args.scale_the_outputs = model_ckpt['hyper_parameters'].get('scale_the_outputs', None)
     args.use_push_pull = model_ckpt['hyper_parameters'].get('use_push_pull', False)
 
     return args
