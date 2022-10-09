@@ -49,6 +49,8 @@ def parse_args():
     parser.add_argument('--pull_kernel_size', type=int, default=None, help='Size of the pull filter (int)')
     parser.add_argument('--avg_kernel_size', type=int, default=None, help='Size of the avg filter (int)')
     parser.add_argument('--pull_inhibition_strength', type=float, default=1.0)
+    parser.add_argument('--pupu_weight', type=float, default=1.0)
+
     parser.add_argument('--model', default='AlexNet', type=str, required=True)
     parser.add_argument('--task', default='classification', type=str, required=True,
                         choices=['classification', 'retrieval'])
@@ -116,6 +118,7 @@ def parse_args():
         assert args.push_kernel_size is not None, "Invalid config: use_push_pull=True but push_kernel_size is not set!"
         assert args.pull_kernel_size is not None, "Invalid config: use_push_pull=True but pull_kernel_size is not set!"
         assert args.avg_kernel_size is not None, "Invalid config: use_push_pull=True but avg_kernel_size is not set!"
+        assert 0 <= args.pupu_weight <= 1.0, "pupu_weight must be in [0.0, 1.0]"
 
     return args
 

@@ -137,6 +137,7 @@ def parse_args():
     args.avg_kernel_size = model_ckpt['hyper_parameters'].get('avg_kernel_size', None)
     args.pull_inhibition_strength = model_ckpt['hyper_parameters'].get('pull_inhibition_strength', None)
     args.use_push_pull = model_ckpt['hyper_parameters'].get('use_push_pull', False)
+    args.pupu_weight = model_ckpt['hyper_parameters'].get('pupu_weight', 1.0)
 
     return args
 
