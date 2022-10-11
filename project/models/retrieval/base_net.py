@@ -42,7 +42,7 @@ class BaseNet(pl.LightningModule):
         self.loss.hash_targets = self.loss.hash_targets.to(self.device)
 
     def evaluate_step(self, batch, batch_idx, dataloader_idx=0, *, stage=None):
-        x, y = batch
+        x, y, y_soft = batch
         y_hat = self(x)
         loss = self.loss(y_hat, y)
         if stage in {'train', 'val', 'test'}:

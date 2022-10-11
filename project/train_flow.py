@@ -25,17 +25,18 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--img_size', default=224, type=int, choices=[32, 224])
     parser.add_argument('--batch_size', default=256, type=int)
-    parser.add_argument('--dataset_dir', default='/data/p288722/datasets/cifar', type=str)
-    parser.add_argument('--dataset_name', default='cifar10',
+    parser.add_argument('--dataset_dir', default='/home/guru/datasets/imagenet', type=str)
+    parser.add_argument('--dataset_name', default='imagenet100',
                         help="'cifar10', 'imagenet100', 'imagenet200', 'imagenet'"
                              "or add a suffix '_20pc' for a 20 percent stratified training subset."
-                             "'_20pc' is an example, can be any float [1.0, 99.0]")
-    parser.add_argument('--finetune', action=argparse.BooleanOptionalAction, default=False)  # todo: deprecate
-    parser.add_argument('--finetune_ckpt', type=str, default=None)  # todo: deprecate
-    parser.add_argument('--ckpt', type=str, default=None)  # ckpt to continue training
+                             "'_20pc' is an example, can be any float [1.0, 99.0]."
+                             "Note - suffix is valid only for ImageNet variants")
+    parser.add_argument('--ckpt', type=str, default=None, help='ckpt for the model to be trained based on '
+                                                               '"training_type". Training to continue from this state.')
 
     # Pytorch lightning args
-    parser.add_argument('--logs_dir', required=True, type=str, help='Path to save the logs/metrics during training')
+    parser.add_argument('--logs_dir', required=True, type=str,
+                        help='Path to save the logs/metrics during training')
     parser.add_argument('--experiment_name', default='dsh_push_pull', type=str)
     parser.add_argument('--num_workers', default=2, type=int,
                         help='how many subprocesses to use for data loading. ``0`` means that the data will be '
@@ -49,9 +50,13 @@ def parse_args():
     parser.add_argument('--pull_kernel_size', type=int, default=None, help='Size of the pull filter (int)')
     parser.add_argument('--avg_kernel_size', type=int, default=None, help='Size of the avg filter (int)')
     parser.add_argument('--pull_inhibition_strength', type=float, default=1.0)
-    parser.add_argument('--pupu_weight', type=float, default=1.0)
+    parser.add_argument('--pupu_weight', type=float, default=1.0)  # todo: deprecate if not used
 
-    parser.add_argument('--model', default='AlexNet', type=str, required=True)
+    parser.add_argument('--training_type', default='teacher', type=str, choices=['teacher', 'student'])
+    parser.add_argument('--teacher_ckpt', type=str, default=None, help='ckpt to determine soft-targets for the student')
+    parser.add_argument('--distillation_loss_temp', type=float, default=2.0)
+    parser.add_argument('--distillation_loss_alpha', type=float, default=0.7)
+    parser.add_argument('--model', default='resnet18', type=str, required=True)
     parser.add_argument('--task', default='classification', type=str, required=True,
                         choices=['classification', 'retrieval'])
 
@@ -62,28 +67,27 @@ def parse_args():
 
     parser.add_argument('--lr_multiplier', type=float, default=1e-2)  # todo: deprecate if not necessary for CSQ Hash
     parser.add_argument('--weight_decay', type=float, default=1e-4)  # regularization
-    parser.add_argument('--hash_length', type=int, default=48)
-    parser.add_argument('--quantization_weight', type=float, default=0.01)
+    parser.add_argument('--hash_length', type=int, default=64)
+    parser.add_argument('--quantization_weight', type=float, default=1e-4)
 
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
 
-    # # Validate args
-    # if not args.accelerator:
-    #     args.accelerator = 'gpu'
-    # if args.accelerator == 'gpu':
-    #     args.device = torch.device(f'cuda:{torch.cuda.current_device()}')
-    # else:
-    #     args.device = torch.device(f'cpu')
-    # if not args.max_epochs:
-    #     args.max_epochs = 60
-
     assert Path(args.dataset_dir).exists(), 'dataset_dir does not exists!'
-    # assert Path(args.logs_dir).exists(), 'logs_dir does not exists!'
     Path(args.logs_dir).joinpath(args.experiment_name).mkdir(exist_ok=True, parents=True)
 
-    if args.finetune:
-        assert Path(args.finetune_ckpt).exists(), 'finetune_ckpt path does not exists!'
+    if args.use_push_pull:
+        assert args.push_kernel_size is not None, "Invalid config: use_push_pull=True but push_kernel_size is not set!"
+        assert args.pull_kernel_size is not None, "Invalid config: use_push_pull=True but pull_kernel_size is not set!"
+        assert args.avg_kernel_size is not None, "Invalid config: use_push_pull=True but avg_kernel_size is not set!"
+        assert 0 <= args.pupu_weight <= 1.0, "pupu_weight must be in [0.0, 1.0]"
+
+    if args.training_type == 'student':
+        assert args.teacher_ckpt is not None, 'Invalid config: teacher_ckpt is not set when training_type="student"'
+        assert Path(args.teacher_ckpt).exists(), 'teacher_ckpt does not exists!'
+        args.loss_type = 'distillation_loss'
+    else:
+        args.loss_type = 'default'  # cce for classification and CSQ for retrieval
 
     torch.use_deterministic_algorithms(True, warn_only=True)
     # if args.dataset_name in {'imagenet100', 'imagenet200'}:
@@ -114,12 +118,6 @@ def parse_args():
         args.lr_base = 5e-2
         args.weight_decay = 5e-4
 
-    if args.use_push_pull:
-        assert args.push_kernel_size is not None, "Invalid config: use_push_pull=True but push_kernel_size is not set!"
-        assert args.pull_kernel_size is not None, "Invalid config: use_push_pull=True but pull_kernel_size is not set!"
-        assert args.avg_kernel_size is not None, "Invalid config: use_push_pull=True but avg_kernel_size is not set!"
-        assert 0 <= args.pupu_weight <= 1.0, "pupu_weight must be in [0.0, 1.0]"
-
     return args
 
 
@@ -131,9 +129,23 @@ def train_on_clean_images(args, ray_tune=False):
     dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
     train_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=True)
     val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=False)
-    test_loader = dataset.get_test_dataloader(args.batch_size, args.num_workers, shuffle=False)
+    # test_loader = dataset.get_test_dataloader(args.batch_size, args.num_workers, shuffle=False)
     args.num_classes = dataset.get_num_classes()
     args.steps_per_epoch = len(train_loader)
+
+    if args.training_type == 'student':
+        data_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
+        trainer = pl.Trainer.from_argparse_args(args, strategy=DDPStrategy(find_unused_parameters=False), )
+
+        args_use_push_pull = args.use_push_pull
+        args.use_push_pull = False
+        model = get_classifier(args)
+        args.use_push_pull = args_use_push_pull
+
+        teacher_train_predictions = trainer.predict(model=model, ckpt_path=args.teacher_ckpt, dataloaders=data_loader)
+        teacher_val_predictions = trainer.predict(model=model, ckpt_path=args.teacher_ckpt, dataloaders=val_loader)
+        train_loader.dataset.update_soft_targets(torch.concat([x['predictions'] for x in teacher_train_predictions]))
+        val_loader.dataset.update_soft_targets(torch.concat([x['predictions'] for x in teacher_val_predictions]))
 
     # ------------
     # model
@@ -142,8 +154,6 @@ def train_on_clean_images(args, ray_tune=False):
                                version=args.logs_version)
     args.logs_dir = logger.log_dir
     model = get_classifier(args)
-    if args.finetune:
-        raise NotImplementedError()
 
     # ------------
     # training
@@ -154,12 +164,10 @@ def train_on_clean_images(args, ray_tune=False):
         ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top5_acc_val', filename='{epoch}-{top5_acc_val:.2f}')
         tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
                                                     "top5_acc_val": "top5_acc_val"}, on="validation_end")
-        # early_stopping_cb = EarlyStopping(monitor='top1_acc_val', mode='max', patience=7, min_delta=0.002)
     elif args.task == 'retrieval':
         ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
         ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')
         tune_callback = TuneReportCallback(metrics={"top1000_mAP_val": "top1000_mAP_val", }, on="validation_end")
-        # early_stopping_cb = EarlyStopping(monitor='top1_acc_val', mode='max', patience=7, min_delta=0.002)
     else:
         raise ValueError('Invalid task!')
     lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
@@ -169,10 +177,7 @@ def train_on_clean_images(args, ray_tune=False):
     callbacks = callbacks + [tune_callback] if ray_tune else callbacks
 
     trainer = pl.Trainer.from_argparse_args(args, logger=logger, callbacks=callbacks,
-                                            # gpus=[0],
-                                            # auto_select_gpus=True,
-                                            strategy=DDPStrategy(find_unused_parameters=False),
-                                            )
+                                            strategy=DDPStrategy(find_unused_parameters=False), )
 
     if args.task == 'classification':
         trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[val_loader])

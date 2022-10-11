@@ -45,16 +45,25 @@ class BaseNet(pl.LightningModule):
     #     df.to_csv(log_file, index=False)
 
     def evaluate(self, batch, stage=None):
-        x, y = batch
+        x, y, y_soft = batch
         y_hat = self(x)
-        loss = F.cross_entropy(y_hat, y)
         acc1 = accuracy(y_hat, y, top_k=1)
         acc5 = accuracy(y_hat, y, top_k=5)
+        loss = None
         if stage == 'test':
-            self.log('loss', {stage: loss}, sync_dist=True)
             self.log('top1-accuracy', {stage: acc1}, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
             self.log('top5-accuracy', {stage: acc5}, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
         elif stage in {'train', 'val'}:
+            if self.hparams.loss_type == 'distillation_loss':
+                # https://github.com/haitongli/knowledge-distillation-pytorch/blob/9937528f0be0efa979c745174fbcbe9621cea8b7/model/net.py#L100
+                alpha = self.hparams.distillation_loss_alpha
+                T = self.hparams.distillation_loss_temp  # temperature
+                loss = (1. - alpha) * F.cross_entropy(y_hat, y) + \
+                       alpha * (T ** 2) * F.kl_div(input=F.log_softmax(y_hat / T, dim=1),
+                                                   target=F.log_softmax(y_soft / T, dim=1),
+                                                   reduction='batchmean', log_target=True)
+            else:
+                loss = F.cross_entropy(y_hat, y)
             self.log('loss', {stage: loss}, sync_dist=True)
             self.log('top1-accuracy', {stage: acc1}, on_epoch=True, on_step=False, sync_dist=True)
             self.log('top5-accuracy', {stage: acc5}, on_epoch=True, on_step=False, sync_dist=True)
@@ -72,7 +81,7 @@ class BaseNet(pl.LightningModule):
         self.evaluate(batch, stage='test')
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
-        x, y = batch
+        x, y, y_soft = batch
         y_hat = self(x)
         return {'predictions': y_hat, 'ground_truths': y}
 

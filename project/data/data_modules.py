@@ -18,6 +18,7 @@ LARGE_ENOUGH_NUMBER = 100
 PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024 ** 2)
 
 
+# fixme: somehow update the dataloader for CIFAR-10 to include the third output y_soft
 class CIFAR10:
     def __init__(
             self,
@@ -108,7 +109,7 @@ class CIFAR10C(Dataset):
     def __getitem__(self, index):
         img = self.transform(self._corruptions[index])
         label = self._labels[self._severity_level][index]
-        return img, label
+        return img, label, -1
 
     def __len__(self):
         return len(self._labels[self._severity_level])
@@ -135,6 +136,7 @@ class _ImageNetBase(Dataset):
         self.split = split
         self.num_classes = num_classes
         self.data_fraction = data_fraction
+        self.soft_targets = None
 
         _normalize = transforms.Normalize((0.485, 0.456, 0.406), (00.229, 0.224, 0.225))
         self._transform_train = transforms.Compose([
@@ -251,11 +253,16 @@ class _ImageNetBase(Dataset):
         self.data = data
         self.labels = labels
 
+    def update_soft_targets(self, soft_targets):
+        assert len(soft_targets) == len(self.labels)
+        self.soft_targets = soft_targets
+
     def __getitem__(self, item):
         img = PIL.Image.open(self.data[item]).convert('RGB')
         img = self.transform(img)
         label = self.labels[item]
-        return img, label
+        soft_target = self.soft_targets[item] if self.soft_targets is not None else -1
+        return img, label, soft_target
 
         # env = self.env
         # with env.begin(write=False) as txn:
@@ -382,7 +389,7 @@ class ImageNetC:
         img = PIL.Image.open(self.images[index]).convert('RGB')
         img = self.transform(img)
         label = self.labels[index]
-        return img, label
+        return img, label, -1
 
     def __len__(self):
         return len(self.labels)

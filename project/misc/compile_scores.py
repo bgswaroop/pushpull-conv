@@ -85,9 +85,9 @@ def save_scores(exp_names, scores_on_clean_dataset, errors, errors_wrt_baseline,
 
 
 def run_flow():
-    compile_scores_dir = Path(r'/home/guru/runtime_data/pushpull-conv/resnet18_imagenet100_classification_pupu_weight')
+    compile_scores_dir = Path(r'/home/guru/runtime_data/pushpull-conv/resnet18_imagenet100_classification_hparams')
     dataset_name = 'imagenet100-c'
-    baseline_exp_dir = '/home/guru/runtime_data/pushpull-conv/resnet18_imagenet100_classification_pupu_weight/resnet18'
+    baseline_exp_dir = '/home/guru/runtime_data/pushpull-conv/resnet18_imagenet100_classification_hparams/resnet18'
     experiments = [
         # 'resnet18',
         # # 'resnet18_pp7x7_avg3',
@@ -104,9 +104,33 @@ def run_flow():
         # 'resnet18_pp7x7_avg5_inh5',
         # 'resnet18_pp7x7_avg5_inh6',
         'resnet18',
-        'resnet18_avg3_inh4_0.2',
-        'resnet18_avg3_inh4_0.6',
-        'resnet18_avg3_inh4_1.0',
+        'resnet18_avg3_inh4_temp1_alpha0.1',
+        'resnet18_avg3_inh4_temp1_alpha0.2',
+        'resnet18_avg3_inh4_temp1_alpha0.3',
+        'resnet18_avg3_inh4_temp1_alpha0.4',
+        'resnet18_avg3_inh4_temp1_alpha0.5',
+        'resnet18_avg3_inh4_temp1_alpha0.6',
+        'resnet18_avg3_inh4_temp1_alpha0.7',
+        'resnet18_avg3_inh4_temp1_alpha0.8',
+        'resnet18_avg3_inh4_temp1_alpha0.9',
+        'resnet18_avg3_inh4_temp2_alpha0.1',
+        'resnet18_avg3_inh4_temp2_alpha0.2',
+        'resnet18_avg3_inh4_temp2_alpha0.3',
+        'resnet18_avg3_inh4_temp2_alpha0.4',
+        'resnet18_avg3_inh4_temp2_alpha0.5',
+        'resnet18_avg3_inh4_temp2_alpha0.6',
+        'resnet18_avg3_inh4_temp2_alpha0.7',
+        'resnet18_avg3_inh4_temp2_alpha0.8',
+        'resnet18_avg3_inh4_temp2_alpha0.9',
+        'resnet18_avg3_inh4_temp3_alpha0.1',
+        'resnet18_avg3_inh4_temp3_alpha0.2',
+        'resnet18_avg3_inh4_temp3_alpha0.3',
+        'resnet18_avg3_inh4_temp3_alpha0.4',
+        'resnet18_avg3_inh4_temp3_alpha0.5',
+        'resnet18_avg3_inh4_temp3_alpha0.6',
+        'resnet18_avg3_inh4_temp3_alpha0.7',
+        'resnet18_avg3_inh4_temp3_alpha0.8',
+        'resnet18_avg3_inh4_temp3_alpha0.9',
     ]
 
     errors_wrt_baseline = []
