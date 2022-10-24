@@ -10,22 +10,20 @@ class ConvNet(BaseNet):
         self.save_hyperparameters(args)
         if args.use_push_pull and args.num_push_pull_layers >= 1:
             self.conv1 = PushPullConv2DUnit(in_channels=3, out_channels=32,
-                                            push_kernel_size=args.push_kernel_size,
-                                            pull_kernel_size=args.pull_kernel_size,
+                                            kernel_size=(5, 5),
                                             avg_kernel_size=args.avg_kernel_size,
-                                            pupu_weight=args.pupu_weight,
                                             pull_inhibition_strength=args.pull_inhibition_strength,
+                                            trainable_pull_inhibition=args.trainable_pull_inhibition,
                                             padding='same')
         else:
             self.conv1 = torch.nn.Conv2d(in_channels=3, out_channels=32, kernel_size=(5, 5), padding='same')
 
         if args.use_push_pull and args.num_push_pull_layers >= 2:
             self.conv2 = PushPullConv2DUnit(in_channels=32, out_channels=32,
-                                            push_kernel_size=args.push_kernel_size,
-                                            pull_kernel_size=args.pull_kernel_size,
+                                            kernel_size=(5, 5),
                                             avg_kernel_size=args.avg_kernel_size,
-                                            pupu_weight=args.pupu_weight,
                                             pull_inhibition_strength=args.pull_inhibition_strength,
+                                            trainable_pull_inhibition=args.trainable_pull_inhibition,
                                             padding='same')
         else:
             self.conv2 = torch.nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(5, 5), padding='same')

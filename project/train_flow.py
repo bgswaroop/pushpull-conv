@@ -13,8 +13,6 @@ from data import get_dataset
 from models import get_classifier
 
 
-# from torchmetrics.functional import accuracy
-
 class LitProgressBar(TQDMProgressBar):
     def init_validation_tqdm(self):
         bar = tqdm(disable=True, )
@@ -46,11 +44,9 @@ def parse_args():
     # Push Pull Convolutional Unit Params
     parser.add_argument('--use_push_pull', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--num_push_pull_layers', type=int, default=1)
-    parser.add_argument('--push_kernel_size', type=int, default=None, help='Size of the push filter (int)')
-    parser.add_argument('--pull_kernel_size', type=int, default=None, help='Size of the pull filter (int)')
     parser.add_argument('--avg_kernel_size', type=int, default=None, help='Size of the avg filter (int)')
     parser.add_argument('--pull_inhibition_strength', type=float, default=1.0)
-    parser.add_argument('--pupu_weight', type=float, default=1.0)  # todo: deprecate if not used
+    parser.add_argument('--trainable_pull_inhibition', type=bool, default=False)
 
     parser.add_argument('--training_type', default='teacher', type=str, choices=['teacher', 'student'])
     parser.add_argument('--teacher_ckpt', type=str, default=None, help='ckpt to determine soft-targets for the student')
@@ -61,11 +57,6 @@ def parse_args():
                         choices=['classification', 'retrieval'])
 
     parser.add_argument('--lr_base', type=float, default=0.1)
-    # parser.add_argument('--lr_start', type=float, default=1e-3)  # for three-phase lr schedule
-    # parser.add_argument('--lr_peak', type=float, default=1e-1)  # for three-phase lr schedule
-    # parser.add_argument('--lr_end', type=float, default=1e-4)  # for three-phase lr schedule
-
-    parser.add_argument('--lr_multiplier', type=float, default=1e-2)  # todo: deprecate if not necessary for CSQ Hash
     parser.add_argument('--weight_decay', type=float, default=1e-4)  # regularization
     parser.add_argument('--hash_length', type=int, default=64)
     parser.add_argument('--quantization_weight', type=float, default=1e-4)
@@ -73,14 +64,11 @@ def parse_args():
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
 
-    assert Path(args.dataset_dir).exists(), 'dataset_dir does not exists!'
+    assert Path(args.dataset_dir).exists(), f'dataset_dir {args.dataset_dir} does not exists!'
     Path(args.logs_dir).joinpath(args.experiment_name).mkdir(exist_ok=True, parents=True)
 
     if args.use_push_pull:
-        assert args.push_kernel_size is not None, "Invalid config: use_push_pull=True but push_kernel_size is not set!"
-        assert args.pull_kernel_size is not None, "Invalid config: use_push_pull=True but pull_kernel_size is not set!"
         assert args.avg_kernel_size is not None, "Invalid config: use_push_pull=True but avg_kernel_size is not set!"
-        assert 0 <= args.pupu_weight <= 1.0, "pupu_weight must be in [0.0, 1.0]"
 
     if args.training_type == 'student':
         assert args.teacher_ckpt is not None, 'Invalid config: teacher_ckpt is not set when training_type="student"'
@@ -90,34 +78,32 @@ def parse_args():
         args.loss_type = 'default'  # cce for classification and CSQ for retrieval
 
     torch.use_deterministic_algorithms(True, warn_only=True)
-    # if args.dataset_name in {'imagenet100', 'imagenet200'}:
-    #     args.max_epochs = 50
-    #     args.batch_size = 64
-    #     args.lr_base = 5e-2
-    #     args.weight_decay = 5e-5
+
     if 'imagenet100' in args.dataset_name or 'imagenet200' in args.dataset_name:
-        args.max_epochs = 30
-        args.batch_size = 64
-        args.lr_base = 0.2
-        args.lr_scheduler = 'step_lr'
-        args.lr_step_size = 10  # epochs
-        args.lr_gamma = 0.1
-        args.weight_decay = 1e-4
+        args.max_epochs = 20
+        args.batch_size = 64  # use 128 for imagenet
+        args.lr_scheduler = 'one_cycle'
+        args.lr_initial = 5e-3
+        args.lr_max = 0.2
+        args.lr_end = 5e-6
+        args.weight_decay = 1e-5
     elif 'imagenet' in args.dataset_name:
-        args.max_epochs = 90
-        args.batch_size = 256
-        args.lr_base = 0.1
-        args.lr_scheduler = 'step_lr'
-        args.lr_step_size = 30  # epochs
-        args.lr_gamma = 0.1
-        args.weight_decay = 1e-4
+        args.max_epochs = 20
+        args.batch_size = 128
+        args.lr_initial = 0.05
+        args.lr_max = 1.0
+        args.lr_end = 5e-5
+        args.lr_scheduler = 'one_cycle'
+        args.weight_decay = 1e-5
     elif args.dataset_name == 'cifar10':
         # The following config is not stable for ResNet50 + cifar10 + retrieval
-        args.max_epochs = 50
-        args.batch_size = 256
-        args.lr_base = 5e-2
-        args.weight_decay = 5e-4
-
+        args.max_epochs = 30
+        args.batch_size = 128
+        args.lr_scheduler = 'one_cycle'
+        args.lr_initial = 5e-3
+        args.lr_max = 0.2
+        args.lr_end = 5e-6
+        args.weight_decay = 1e-5
     return args
 
 
@@ -129,7 +115,6 @@ def train_on_clean_images(args, ray_tune=False):
     dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
     train_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=True)
     val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=False)
-    # test_loader = dataset.get_test_dataloader(args.batch_size, args.num_workers, shuffle=False)
     args.num_classes = dataset.get_num_classes()
     args.steps_per_epoch = len(train_loader)
 
@@ -181,28 +166,9 @@ def train_on_clean_images(args, ray_tune=False):
 
     if args.task == 'classification':
         trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[val_loader])
-        # trainer.test(model, test_loader)
     elif args.task == 'retrieval':
         retrieval_database = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
         trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[retrieval_database, val_loader])
-        # trainer.test(model, dataloaders=[retrieval_database, test_loader])
-    # trainer.test(model, test_loader, ckpt_path=args.ckpt)   #fixme: add logic for test loader
-    # # ------------
-    # # testing
-    # # ------------
-    # # Optionally add ckpt_path to trainer.predict()
-    # train_predictions = trainer.predict(model=model, dataloaders=train_loader)
-    # test_predictions = trainer.predict(model=model, dataloaders=test_loader)
-    #
-    # y_hat = torch.concat([x['predictions'] for x in train_predictions])
-    # y = torch.concat([x['ground_truths'] for x in train_predictions])
-    # acc1 = accuracy(y_hat, y)
-    # print(f'Training  set accuracy: {acc1}')
-    #
-    # y_hat = torch.concat([x['predictions'] for x in test_predictions])
-    # y = torch.concat([x['ground_truths'] for x in test_predictions])
-    # acc1 = accuracy(y_hat, y)
-    # print(f'Test  set accuracy: {acc1}')
 
 
 def run_flow():

@@ -168,11 +168,10 @@ class ResNet(BaseNet):
 
         if args.use_push_pull and args.num_push_pull_layers >= 1:
             self.conv1 = PushPullConv2DUnit(in_channels=3, out_channels=self.in_planes,
-                                            push_kernel_size=args.push_kernel_size,
-                                            pull_kernel_size=args.pull_kernel_size,
+                                            kernel_size=(7, 7),
                                             avg_kernel_size=args.avg_kernel_size,
-                                            pupu_weight=args.pupu_weight,
                                             pull_inhibition_strength=args.pull_inhibition_strength,
+                                            trainable_pull_inhibition=args.trainable_pull_inhibition,
                                             stride=2, padding=3)
         else:
             self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=7, stride=2, padding=3)
@@ -183,11 +182,10 @@ class ResNet(BaseNet):
         if args.dataset_name == 'cifar10':
             if args.use_push_pull and args.num_push_pull_layers >= 1:
                 self.conv1 = PushPullConv2DUnit(in_channels=3, out_channels=self.in_planes,
-                                                push_kernel_size=3,
-                                                pull_kernel_size=3,
+                                                kernel_size=3,
                                                 avg_kernel_size=args.avg_kernel_size,
-                                                pupu_weight=args.pupu_weight,
                                                 pull_inhibition_strength=args.pull_inhibition_strength,
+                                                trainable_pull_inhibition=args.trainable_pull_inhibition,
                                                 stride=1, padding=1)
             else:
                 self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=3, stride=1, padding=1)

@@ -3,8 +3,10 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
+import pandas as pd
 import pytorch_lightning as pl
 import torch
+from torchmetrics import Accuracy, ClasswiseWrapper
 from torchmetrics.functional import accuracy
 
 from data import get_dataset
@@ -95,27 +97,10 @@ def parse_args():
     parser.add_argument('--task', default='classification', type=str, required=False,
                         choices=['classification', 'retrieval'])
 
-    parser.add_argument('--lr_base', type=float, default=3e-4)  # fixme: why is this required in predict flow?
-    parser.add_argument('--weight_decay', type=float, default=0.004)  # fixme: why is this required in predict flow?
-
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
 
-    # if not args.accelerator:
-    #     args.accelerator = 'gpu'
-    # if args.accelerator == 'gpu':
-    #     args.device = torch.device(f'cuda:{torch.cuda.current_device()}')
-    # else:
-    #     args.device = torch.device(f'cpu')
-
-    # todo: deprecate num_severities and fix ot to 5
-    if args.corrupted_dataset_name in {'CIFAR-10-C-EnhancedSeverity'}:
-        args.num_severities = 10
-    elif args.corrupted_dataset_name in {'CIFAR-10-C-224x224', 'cifar10-c', 'imagenet-c', 'imagenet100-c',
-                                         'imagenet200-c'}:
-        args.num_severities = 5
-    else:
-        raise NotImplementedError('num_severities for the current corrupted_dataset_name is undefined')
+    args.num_severities = 5
 
     assert Path(args.dataset_dir).exists(), f'{args.dataset_dir} does not exists!'
     assert Path(args.corrupted_dataset_dir).exists(), f'{args.corrupted_dataset_dir} does not exists!'
@@ -131,18 +116,15 @@ def parse_args():
         args.baseline_results_file.parent.mkdir(exist_ok=True, parents=True)
     else:
         args.baseline_results_file = Path(args.baseline_model_logs_dir).joinpath('results/all_scores.json')
-        # assert args.baseline_results_file.exists(), 'Results file does not exists in the baseline_model_logs_dir'
 
     model_ckpt = torch.load(args.model_ckpt)
     args.num_classes = model_ckpt['hyper_parameters'].get('num_classes', None)
     args.hash_length = model_ckpt['hyper_parameters'].get('hash_length', None)
     args.quantization_weight = model_ckpt['hyper_parameters'].get('quantization_weight', None)
-    args.push_kernel_size = model_ckpt['hyper_parameters'].get('push_kernel_size', None)
-    args.pull_kernel_size = model_ckpt['hyper_parameters'].get('pull_kernel_size', None)
     args.avg_kernel_size = model_ckpt['hyper_parameters'].get('avg_kernel_size', None)
     args.pull_inhibition_strength = model_ckpt['hyper_parameters'].get('pull_inhibition_strength', None)
+    args.trainable_pull_inhibition = model_ckpt['hyper_parameters'].get('trainable_pull_inhibition', False)
     args.use_push_pull = model_ckpt['hyper_parameters'].get('use_push_pull', False)
-    args.pupu_weight = model_ckpt['hyper_parameters'].get('pupu_weight', 1.0)
 
     return args
 
@@ -155,7 +137,7 @@ def predict_with_noise():
     model = get_classifier(args)
     model.load_state_dict(torch.load(args.model_ckpt)['state_dict'])
 
-    trainer = pl.Trainer.from_argparse_args(args)  # todo: test the behaviour after removing devices=1
+    trainer = pl.Trainer.from_argparse_args(args)
 
     clean_dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
 
@@ -174,19 +156,32 @@ def predict_with_noise():
         with open(without_baseline_file) as f:
             scores.update(json.load(f)[args.corrupted_dataset_name]['scores'])
 
-    if 'clean' not in scores:
-        test_loader = clean_dataset.get_test_dataloader(args.batch_size, args.num_workers)
-        predictions = trainer.predict(model=model, dataloaders=test_loader)
-        test_predictions = torch.concat([x['predictions'] for x in predictions])
-        test_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
-        scores['clean'] = {}
-        if args.task == 'classification':
-            scores['clean']['top1'] = float(accuracy(test_predictions, test_ground_truths, top_k=1))
-            scores['clean']['top5'] = float(accuracy(test_predictions, test_ground_truths, top_k=5))
-        elif args.task == 'retrieval':
-            scores['clean'] = compute_map_score(train_predictions, train_ground_truths,
-                                                test_predictions, test_ground_truths,
-                                                args.device, return_as_float=True)
+    # if 'clean' not in scores:
+    test_loader = clean_dataset.get_test_dataloader(args.batch_size, args.num_workers)
+    predictions = trainer.predict(model=model, dataloaders=test_loader)
+    test_predictions = torch.concat([x['predictions'] for x in predictions])
+    test_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
+    scores['clean'] = {}
+    classwise_scores = {}
+
+    num_classes = test_loader.dataset.num_classes
+    labels = [test_loader.dataset.labels_num_to_txt[x] for x in range(num_classes)]
+    if 'imagenet' in args.dataset_name:
+        with open(Path(__file__).parent.resolve().joinpath('data/imagenet_c/LOC_synset_mapping.json')) as f:
+            synset = json.load(f)
+            classwise_scores['synset'] = [synset[x] for x in sorted(labels)]
+
+    if args.task == 'classification':
+        scores['clean']['top1'] = float(accuracy(test_predictions, test_ground_truths, top_k=1))
+        scores['clean']['top5'] = float(accuracy(test_predictions, test_ground_truths, top_k=5))
+        top1_classwise_accuracy = ClasswiseWrapper(Accuracy(top_k=1, num_classes=num_classes, average=None), labels)
+        output = top1_classwise_accuracy(test_predictions, test_ground_truths)
+        classwise_index = sorted(output.keys())
+        classwise_scores['Clean'] = [float(output[x].item()) for x in classwise_index]
+    elif args.task == 'retrieval':
+        scores['clean'] = compute_map_score(train_predictions, train_ground_truths,
+                                            test_predictions, test_ground_truths,
+                                            args.device, return_as_float=True)
 
     dataset = get_dataset(args.corrupted_dataset_name, args.corrupted_dataset_dir, args.num_severities)
     corruption_types = args.corruption_types if args.corruption_types else dataset.test_corruption_types
@@ -210,12 +205,23 @@ def predict_with_noise():
             if args.task == 'classification':
                 scores[corruption_type]['top1'].append(float(accuracy(test_predictions, test_ground_truths, top_k=1)))
                 scores[corruption_type]['top5'].append(float(accuracy(test_predictions, test_ground_truths, top_k=5)))
+
+                output = top1_classwise_accuracy(test_predictions, test_ground_truths)
+                classwise_index = sorted(output.keys())
+                classwise_scores[f'{corruption_type}_{severity_level}'] = [float(output[x].item()) for x in
+                                                                           classwise_index]
+
             elif args.task == 'retrieval':
                 map_score = compute_map_score(train_predictions, train_ground_truths,
                                               test_predictions, test_ground_truths,
                                               args.device, return_as_float=True)
                 for item in scores['clean']:
                     scores[corruption_type][item].append(map_score[item])
+
+    classwise_results = pd.DataFrame(classwise_scores, index=classwise_index)
+    classwise_results = classwise_results.rename_axis(index='Classwise results')
+    classwise_scores_file = args.results_file.parent.joinpath('classwise_scores.csv')
+    classwise_results.to_csv(classwise_scores_file, sep=',')
 
     CE, mCE = compute_mean_corruption_error(scores)
     corruption_errors = {'CE': CE, 'mCE': mCE}
@@ -246,12 +252,6 @@ def predict_with_noise():
         with open(args.results_file, 'r') as f:
             results_summary = json.load(f)
         if args.corrupted_dataset_name in results_summary:
-
-            # todo: delete this part once all the models have been updated in A40
-            if 'scores_versus_baseline' in results_summary[args.corrupted_dataset_name]:
-                temp = results_summary[args.corrupted_dataset_name]['scores_versus_baseline']
-                del results_summary[args.corrupted_dataset_name]['scores_versus_baseline']
-                results_summary[args.corrupted_dataset_name]['errors_wrt_baseline'] = temp
 
             results_summary[args.corrupted_dataset_name]['scores'] = scores
             results_summary[args.corrupted_dataset_name]['errors'] = corruption_errors

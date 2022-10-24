@@ -3,6 +3,7 @@ import os
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
+from typing import Optional, Callable, Tuple, Any
 
 import PIL.Image
 import lmdb
@@ -11,14 +12,69 @@ import pyarrow as pa
 import torch
 import torchvision.datasets
 from PIL import PngImagePlugin
-from torch.utils.data import Dataset, random_split, DataLoader
+from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms, InterpolationMode
 
 LARGE_ENOUGH_NUMBER = 100
 PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024 ** 2)
 
 
-# fixme: somehow update the dataloader for CIFAR-10 to include the third output y_soft
+class _CIFAR10(torchvision.datasets.CIFAR10):
+    def __init__(self, root: str,
+                 train: bool = True,
+                 transform: Optional[Callable] = None,
+                 target_transform: Optional[Callable] = None,
+                 download: bool = False, ):
+        super().__init__(root, train, transform, target_transform, download)
+        self.soft_targets = None
+        self.num_classes = 10
+        self.labels_num_to_txt = {
+            0: 'airplane',
+            1: 'automobile',
+            2: 'bird',
+            3: 'bird',
+            4: 'cat',
+            5: 'deer',
+            6: 'dog',
+            7: 'frog',
+            8: 'horse',
+            9: 'ship',
+            10: 'truck',
+        }
+
+    def __getitem__(self, index: int) -> Tuple[Any, Any]:
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        img, target = self.data[index], self.targets[index]
+
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        img = PIL.Image.fromarray(img)
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        soft_target = self.soft_targets[index] if self.soft_targets is not None else -1
+
+        return img, target, soft_target
+
+    def update_soft_targets(self, soft_targets):
+        assert len(soft_targets) == len(self.targets)
+        self.soft_targets = soft_targets
+
+    @staticmethod
+    def get_num_classes():
+        return 10
+
+
 class CIFAR10:
     def __init__(
             self,
@@ -27,7 +83,6 @@ class CIFAR10:
     ) -> None:
         self.root = root
         self.download = download
-        self._split = [45000, 5000]
 
         _normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
         self._transform_train = transforms.Compose([
@@ -42,17 +97,16 @@ class CIFAR10:
         ])
 
     def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
-        dataset = torchvision.datasets.CIFAR10(self.root, True, self._transform_train, None, self.download)
-        data_split_train, data_split_val = random_split(dataset, self._split, torch.Generator().manual_seed(99))
-        train_loader = DataLoader(data_split_train, batch_size, shuffle, num_workers=num_workers,
-                                  persistent_workers=True)
+        dataset = _CIFAR10(self.root, True, self._transform_train, None, self.download)
+        # data_split_train, data_split_val = random_split(dataset, self._split, torch.Generator().manual_seed(99))
+        train_loader = DataLoader(dataset, batch_size, shuffle, num_workers=num_workers, persistent_workers=True)
         return train_loader
 
     def get_validation_dataloader(self, batch_size, num_workers, shuffle=False):
         return self.get_test_dataloader(batch_size, num_workers, shuffle)
 
     def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
-        dataset = torchvision.datasets.CIFAR10(self.root, False, self._transform_test, None, self.download)
+        dataset = _CIFAR10(self.root, False, self._transform_test, None, self.download)
         test_dataloader = DataLoader(dataset, batch_size, shuffle, num_workers=num_workers,
                                      persistent_workers=True)
         return test_dataloader
@@ -205,19 +259,6 @@ class _ImageNetBase(Dataset):
         if self.data_fraction != 1.0:
             self._select_stratified_data_fraction()
 
-        # from collections import Counter
-        # from matplotlib import pyplot as plt
-        # from pathlib import Path
-        #
-        # c = Counter(self.labels)
-        # plt.figure()
-        # plt.hist(c.values())
-        # plt.title('ImageNet100 - Distribution of #samples per class')
-        # plt.xlabel('num samples per class')
-        # plt.ylabel('num classes')
-        # plt.savefig(Path.cwd().joinpath('data/_plot_figures/ImageNet100_distribution.png'))
-        # plt.show()
-
         # Relabel the samples
         relabel_map = {x: idx for idx, x in enumerate(sorted(np.unique(self.labels)))}
         self.labels = [relabel_map[x] for x in self.labels]
@@ -257,11 +298,11 @@ class _ImageNetBase(Dataset):
         assert len(soft_targets) == len(self.labels)
         self.soft_targets = soft_targets
 
-    def __getitem__(self, item):
-        img = PIL.Image.open(self.data[item]).convert('RGB')
+    def __getitem__(self, index):
+        img = PIL.Image.open(self.data[index]).convert('RGB')
         img = self.transform(img)
-        label = self.labels[item]
-        soft_target = self.soft_targets[item] if self.soft_targets is not None else -1
+        label = self.labels[index]
+        soft_target = self.soft_targets[index] if self.soft_targets is not None else -1
         return img, label, soft_target
 
         # env = self.env

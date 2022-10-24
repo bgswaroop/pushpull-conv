@@ -98,12 +98,19 @@ class BaseNet(pl.LightningModule):
                 step_size=self.hparams.lr_step_size,
                 gamma=self.hparams.lr_gamma,
             )
-        else:
+            return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler}}
+        elif self.hparams.lr_scheduler in {'one_cycle'}:
             scheduler = OneCycleLR(
                 optimizer,
-                max_lr=0.1,
+                div_factor=int(self.hparams.lr_max / self.hparams.lr_initial),
+                max_lr=self.hparams.lr_max,
+                final_div_factor=int(self.hparams.lr_max / self.hparams.lr_end),
+                pct_start=0.3,
                 epochs=self.trainer.max_epochs,
                 steps_per_epoch=self.hparams.steps_per_epoch,
             )
+            return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'interval': 'step'}}
+        else:
+            raise ValueError('Invalid LR scheduler')
 
-        return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler}}
+

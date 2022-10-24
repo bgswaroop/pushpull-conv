@@ -12,8 +12,6 @@ from train_flow import parse_args, train_on_clean_images
 def run_flow():
     config = {
         "use_pp": tune.grid_search([True]),
-        "push": tune.grid_search([7]),
-        "pull": tune.grid_search([7]),
         "inh": tune.grid_search([4]),
         "avg": tune.grid_search([3]),
         "alpha": tune.grid_search([0.5, 0.6, 0.7, 0.8, 0.9]),
@@ -35,7 +33,7 @@ def run_flow():
     resources_per_trial = {"cpu": 6, "gpu": 0.14}
 
     # search_alg = BasicVariantGenerator(points_to_evaluate=[
-    #     # {"use_pp": False, "avg": None, "inh": None, "push": None, "pull": None},
+    #     # {"use_pp": False, "avg": None, "inh": None},
     #     # {"use_pp": True, "avg": 3, "inh": 1},
     #     # {"use_pp": True, "avg": 3, "inh": 2},
     #     # {"use_pp": True, "avg": 3, "inh": 3},
@@ -70,8 +68,6 @@ def run_flow():
 def hyperparameter_search(config):
     args = copy.deepcopy(args_global)
     args.use_push_pull = config['use_pp']
-    args.push_kernel_size = config['push']
-    args.pull_kernel_size = config['pull']
     args.avg_kernel_size = config['avg']
     args.pull_inhibition_strength = config['inh']
     args.distillation_loss_alpha = config['alpha']
