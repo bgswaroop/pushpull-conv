@@ -2,24 +2,16 @@ from typing import Type, Callable, Union, List, Optional
 
 import torch
 import torch.nn as nn
+from antialiased_cnns import BlurPool
 from torch import Tensor
 
 from .base_net import BaseNet
-from ..utils.push_pull_unit import PushPullConv2DUnit
 
 
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
     """3x3 convolution with padding"""
-    return nn.Conv2d(
-        in_planes,
-        out_planes,
-        kernel_size=3,
-        stride=stride,
-        padding=dilation,
-        groups=groups,
-        bias=False,
-        dilation=dilation,
-    )
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+                     padding=dilation, groups=groups, bias=False, dilation=dilation)
 
 
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
@@ -40,19 +32,22 @@ class BasicBlock(nn.Module):
             base_width: int = 64,
             dilation: int = 1,
             norm_layer: Optional[Callable[..., nn.Module]] = None,
+            antialiasing_filter_size=1
     ) -> None:
         super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         if groups != 1 or base_width != 64:
-            raise ValueError("BasicBlock only supports groups=1 and base_width=64")
+            raise ValueError('BasicBlock only supports groups=1 and base_width=64')
         if dilation > 1:
             raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
-        self.conv1 = conv3x3(inplanes, planes, stride)
+        self.conv1 = nn.Sequential(conv3x3(inplanes, planes),
+                                   BlurPool(planes, filt_size=antialiasing_filter_size, stride=stride))
         self.bn1 = norm_layer(planes)
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = conv3x3(planes, planes)
+
         self.bn2 = norm_layer(planes)
         self.downsample = downsample
         self.stride = stride
@@ -95,6 +90,7 @@ class Bottleneck(nn.Module):
             base_width: int = 64,
             dilation: int = 1,
             norm_layer: Optional[Callable[..., nn.Module]] = None,
+            antialiasing_filter_size=1,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -103,9 +99,11 @@ class Bottleneck(nn.Module):
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv1x1(inplanes, width)
         self.bn1 = norm_layer(width)
-        self.conv2 = conv3x3(width, width, stride, groups, dilation)
+        self.conv2 = nn.Sequential(conv3x3(width, width, groups=groups, dilation=dilation),
+                                   BlurPool(width, filt_size=antialiasing_filter_size, stride=stride))
         self.bn2 = norm_layer(width)
         self.conv3 = conv1x1(width, planes * self.expansion)
+
         self.bn3 = norm_layer(planes * self.expansion)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
@@ -145,6 +143,7 @@ class ResNet(BaseNet):
             width_per_group: int = 64,
             replace_stride_with_dilation: Optional[List[bool]] = None,
             norm_layer: Optional[Callable[..., nn.Module]] = None,
+            antialiasing_filter_size: int = 1,
     ) -> None:
         super().__init__()
         self.save_hyperparameters(args)
@@ -166,35 +165,24 @@ class ResNet(BaseNet):
         self.groups = groups
         self.base_width = width_per_group
 
-        if args.use_push_pull and args.num_push_pull_layers >= 1:
-            self.conv1 = PushPullConv2DUnit(in_channels=3, out_channels=self.in_planes,
-                                            kernel_size=(7, 7),
-                                            avg_kernel_size=args.avg_kernel_size,
-                                            pull_inhibition_strength=args.pull_inhibition_strength,
-                                            trainable_pull_inhibition=args.trainable_pull_inhibition,
-                                            stride=2, padding=3)
-        else:
-            self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=7, stride=2, padding=3)
-        self.bn = norm_layer(self.in_planes)
+        self.conv1 = nn.Sequential(nn.Conv2d(3, self.in_planes, kernel_size=7, stride=1, padding=3, bias=False),
+                                   BlurPool(self.in_planes, filt_size=antialiasing_filter_size, stride=2, ))
+        self.bn1 = norm_layer(self.in_planes)
         self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.maxpool = nn.Sequential(nn.MaxPool2d(kernel_size=2, stride=1),
+                                     BlurPool(self.in_planes, filt_size=antialiasing_filter_size, stride=2, ))
 
-        if args.dataset_name == 'cifar10':
-            if args.use_push_pull and args.num_push_pull_layers >= 1:
-                self.conv1 = PushPullConv2DUnit(in_channels=3, out_channels=self.in_planes,
-                                                kernel_size=(3, 3),
-                                                avg_kernel_size=args.avg_kernel_size,
-                                                pull_inhibition_strength=args.pull_inhibition_strength,
-                                                trainable_pull_inhibition=args.trainable_pull_inhibition,
-                                                stride=1, padding=1)
-            else:
-                self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=3, stride=1, padding=1)
+        if args.dataset_name == 'cifar10':  # input image resolution is 32x32
+            self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=3, stride=1, padding=1)
             self.maxpool = nn.Identity()
 
         self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0],
+                                       antialiasing_filter_size=antialiasing_filter_size)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1],
+                                       antialiasing_filter_size=antialiasing_filter_size)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2],
+                                       antialiasing_filter_size=antialiasing_filter_size)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.classifier = nn.Linear(512 * block.expansion, self.hparams.num_classes)
 
@@ -222,6 +210,7 @@ class ResNet(BaseNet):
             blocks: int,
             stride: int = 1,
             dilate: bool = False,
+            antialiasing_filter_size=1,
     ) -> nn.Sequential:
         norm_layer = self._norm_layer
         downsample = None
@@ -230,13 +219,15 @@ class ResNet(BaseNet):
             self.dilation *= stride
             stride = 1
         if stride != 1 or self.in_planes != planes * block.expansion:
-            downsample = nn.Sequential(
-                conv1x1(self.in_planes, planes * block.expansion, stride),
-                norm_layer(planes * block.expansion),
-            )
+            downsample = [conv1x1(self.in_planes, planes * block.expansion, 1)]
+            downsample += [BlurPool(filt_size=antialiasing_filter_size,
+                                    stride=stride, channels=planes * block.expansion), ] if (stride != 1) else []
+            downsample += [norm_layer(planes * block.expansion)]
+            downsample = nn.Sequential(*downsample)
 
         layers = [block(
-            self.in_planes, planes, stride, downsample, self.groups, self.base_width, previous_dilation, norm_layer
+            self.in_planes, planes, stride, downsample, self.groups, self.base_width, previous_dilation, norm_layer,
+            antialiasing_filter_size
         )]
         self.in_planes = planes * block.expansion
         for _ in range(1, blocks):
@@ -248,6 +239,7 @@ class ResNet(BaseNet):
                     base_width=self.base_width,
                     dilation=self.dilation,
                     norm_layer=norm_layer,
+                    antialiasing_filter_size=antialiasing_filter_size,
                 )
             )
 
@@ -255,7 +247,7 @@ class ResNet(BaseNet):
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.conv1(x)
-        x = self.maxpool(self.relu(self.bn(x)))
+        x = self.maxpool(self.relu(self.bn1(x)))
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
@@ -266,39 +258,42 @@ class ResNet(BaseNet):
         return x
 
 
-def resnet18(args) -> ResNet:
-    return ResNet(args, block=BasicBlock, layers=[2, 2, 2, 2])
+def resnet18(args, antialiasing_filter_size=5) -> ResNet:
+    return ResNet(args, block=BasicBlock, layers=[2, 2, 2, 2], antialiasing_filter_size=antialiasing_filter_size)
 
 
-def resnet34(args) -> ResNet:
-    return ResNet(args, block=BasicBlock, layers=[3, 4, 6, 3])
+def resnet34(args, antialiasing_filter_size=5) -> ResNet:
+    return ResNet(args, block=BasicBlock, layers=[3, 4, 6, 3], antialiasing_filter_size=antialiasing_filter_size)
 
 
-def resnet50(args) -> ResNet:
-    return ResNet(args, block=Bottleneck, layers=[3, 4, 6, 3])
+def resnet50(args, antialiasing_filter_size=5) -> ResNet:
+    return ResNet(args, block=Bottleneck, layers=[3, 4, 6, 3], antialiasing_filter_size=antialiasing_filter_size)
 
 
-def resnet101(args) -> ResNet:
-    return ResNet(args, block=Bottleneck, layers=[3, 4, 23, 3])
+def resnet101(args, antialiasing_filter_size=5) -> ResNet:
+    return ResNet(args, block=Bottleneck, layers=[3, 4, 23, 3], antialiasing_filter_size=antialiasing_filter_size)
 
 
-def resnet152(args) -> ResNet:
-    return ResNet(args, block=Bottleneck, layers=[3, 8, 36, 3])
+def resnet152(args, antialiasing_filter_size=5) -> ResNet:
+    return ResNet(args, block=Bottleneck, layers=[3, 8, 36, 3], antialiasing_filter_size=antialiasing_filter_size)
 
 
-def resnext50_32x4d(args, **kwargs) -> ResNet:
+def resnext50_32x4d(args, antialiasing_filter_size=5, **kwargs) -> ResNet:
     kwargs['groups'] = 32
     kwargs['width_per_group'] = 4
-    return ResNet(args, block=Bottleneck, layers=[3, 4, 6, 3], **kwargs)
+    return ResNet(args, block=Bottleneck, layers=[3, 4, 6, 3], antialiasing_filter_size=antialiasing_filter_size,
+                  **kwargs)
 
 
-def resnext101_32x8d(args, **kwargs) -> ResNet:
+def resnext101_32x8d(args, antialiasing_filter_size=5, **kwargs) -> ResNet:
     kwargs['groups'] = 32
     kwargs['width_per_group'] = 8
-    return ResNet(args, block=Bottleneck, layers=[3, 4, 23, 3], **kwargs)
+    return ResNet(args, block=Bottleneck, layers=[3, 4, 23, 3], antialiasing_filter_size=antialiasing_filter_size,
+                  **kwargs)
 
 
-def resnext101_64x4d(args, **kwargs) -> ResNet:
+def resnext101_64x4d(args, antialiasing_filter_size=5, **kwargs) -> ResNet:
     kwargs['groups'] = 64
     kwargs['width_per_group'] = 4
-    return ResNet(args, block=Bottleneck, layers=[3, 4, 23, 3], **kwargs)
+    return ResNet(args, block=Bottleneck, layers=[3, 4, 23, 3], antialiasing_filter_size=antialiasing_filter_size,
+                  **kwargs)

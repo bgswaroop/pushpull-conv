@@ -1,11 +1,13 @@
 from pathlib import Path
 
-from matplotlib import pyplot as plt
 import torch
+from matplotlib import pyplot as plt
+
 
 def plot_trainable_inhibitions():
     # ckpt = Path('/home/guru/runtime_data/pushpull-conv/resnet50_imagenet_classification_w_relu/resnet50_avg5_inh_trainable/checkpoints/last.ckpt')
-    ckpt = Path(r'/home/guru/runtime_data/pushpull-conv/resnet50_cifar10_classification_w_relu/resnet50_avg5_inh_trainable_bs64/checkpoints/last.ckpt')
+    ckpt = Path(
+        r'/home/guru/runtime_data/pushpull-conv-new/resnet18_imagenet100_classification/resnet18_wo_relu_avg3_inh_trainable/checkpoints/last.ckpt')
     model = torch.load(ckpt)
     x = model['state_dict']['conv1.pull_inhibition_strength'].cpu()
     plt.figure(dpi=150)
@@ -18,7 +20,5 @@ def plot_trainable_inhibitions():
     plt.show()
 
 
-
 if __name__ == '__main__':
     plot_trainable_inhibitions()
-

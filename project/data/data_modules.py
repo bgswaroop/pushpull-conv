@@ -79,18 +79,29 @@ class CIFAR10:
     def __init__(
             self,
             root: str,
+            augment = None,
             download: bool = True,
     ) -> None:
         self.root = root
         self.download = download
 
         _normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-        self._transform_train = transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            _normalize
-        ])
+
+        if augment:
+            self._transform_train = transforms.Compose([
+                augment,
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                _normalize
+            ])
+        else:
+            self._transform_train = transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                _normalize
+            ])
         self._transform_test = transforms.Compose([
             transforms.ToTensor(),
             _normalize
@@ -185,6 +196,7 @@ class _ImageNetBase(Dataset):
             img_size: int,
             num_classes: int,
             data_fraction: float = 1.0,
+            augment = None,
     ) -> None:
         self.root = Path(root)
         self.split = split
@@ -192,15 +204,25 @@ class _ImageNetBase(Dataset):
         self.data_fraction = data_fraction
         self.soft_targets = None
 
-        _normalize = transforms.Normalize((0.485, 0.456, 0.406), (00.229, 0.224, 0.225))
-        self._transform_train = transforms.Compose([
-            transforms.Resize(256, InterpolationMode.BILINEAR),
-            transforms.RandomCrop(img_size),
-            # transforms.CenterCrop(img_size),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            _normalize
-        ])
+        _normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+
+        if augment:
+            self._transform_train = transforms.Compose([
+                augment,
+                transforms.Resize(256, InterpolationMode.BILINEAR),
+                transforms.RandomCrop(img_size),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                _normalize
+            ])
+        else:
+            self._transform_train = transforms.Compose([
+                    transforms.Resize(256, InterpolationMode.BILINEAR),
+                    transforms.RandomCrop(img_size),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    _normalize
+                ])
         self._transform_test = transforms.Compose([
             transforms.Resize(img_size, InterpolationMode.BILINEAR),
             transforms.CenterCrop(img_size),
@@ -326,14 +348,16 @@ class _ImageNetBase(Dataset):
 
 
 class ImageNet:
-    def __init__(self, root: str, img_size: int, train_set_fraction=1.0, num_classes=1000):
+    def __init__(self, root: str, img_size: int, train_set_fraction=1.0, augment=None, num_classes=1000):
         self.root = root
         self.img_size = img_size
         self.num_classes = num_classes
         self.train_set_fraction = train_set_fraction
+        self.augment = augment
 
     def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
-        self.dataset = _ImageNetBase(self.root, 'train', self.img_size, self.num_classes, self.train_set_fraction)
+        self.dataset = _ImageNetBase(self.root, 'train', self.img_size, self.num_classes, self.train_set_fraction,
+                                     self.augment)
         train_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
                                   prefetch_factor=16, pin_memory=True, persistent_workers=True)
         return train_loader

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytorch_lightning as pl
 import torch
-from torch.optim.lr_scheduler import OneCycleLR
+from torch.optim.lr_scheduler import OneCycleLR, StepLR
 
 from ..utils import CSQLoss, compute_map_score
 
@@ -58,9 +58,8 @@ class BaseNet(pl.LightningModule):
         query_score = compute_map_score(database_hash, database_gt, query_hash, query_gt, self.device)
 
         for key in query_score.keys():
-            # self.log(f'{key}_mAP', {stage: train_score[key], stage: query_score[key]})
             self.log(f'{key}_mAP', {stage: query_score[key]}, add_dataloader_idx=False, sync_dist=True)
-            if key in {'top50', 'top200', 'top1000'} and stage == 'val':
+            if key in {'top50', 'top200'} and stage == 'val':
                 self.log(f'{key}_mAP_{stage}', query_score[key], logger=False, add_dataloader_idx=False, sync_dist=True)
 
     def training_step(self, batch, batch_idx):
@@ -68,14 +67,14 @@ class BaseNet(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        stage = ['database', 'val'][dataloader_idx]
+        stage = ['val', 'database'][dataloader_idx]
         hash_code, y, loss = self.evaluate_step(batch, batch_idx, stage=stage)
         if stage == 'val':
             self.log(f'loss_{stage}', loss, add_dataloader_idx=False, logger=False, sync_dist=True)
         return {f'{stage}': {'predictions': hash_code, 'ground_truths': y}}
 
-    def validation_epoch_end(self, outputs) -> None:
-        self.evaluate_epoch(outputs, stage='val')
+    # def validation_epoch_end(self, outputs) -> None:
+    #     self.evaluate_epoch(outputs, stage='val')
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         hash_code, y, loss = self.evaluate_step(batch, batch_idx)
@@ -95,11 +94,33 @@ class BaseNet(pl.LightningModule):
                                     lr=self.hparams.lr_base,
                                     momentum=0.9,
                                     weight_decay=self.hparams.weight_decay)
-        scheduler = OneCycleLR(
-            optimizer,
-            max_lr=0.1,
-            epochs=self.trainer.max_epochs,
-            steps_per_epoch=self.hparams.steps_per_epoch,
-        )
-        return {'optimizer': optimizer,
-                'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss_val', "interval": "epoch"}}
+        # scheduler = OneCycleLR(
+        #     optimizer,
+        #     max_lr=0.1,
+        #     epochs=self.trainer.max_epochs,
+        #     steps_per_epoch=self.hparams.steps_per_epoch,
+        # )
+        # return {'optimizer': optimizer,
+        #         'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss_val', "interval": "epoch"}}
+
+        if self.hparams.lr_scheduler in {'step_lr'}:
+            scheduler = StepLR(
+                optimizer,
+                step_size=self.hparams.lr_step_size,
+                gamma=self.hparams.lr_gamma,
+            )
+            return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler}}
+        elif self.hparams.lr_scheduler in {'one_cycle'}:
+            scheduler = OneCycleLR(
+                optimizer,
+                div_factor=int(self.hparams.lr_max / self.hparams.lr_initial),
+                max_lr=self.hparams.lr_max,
+                final_div_factor=int(self.hparams.lr_max / self.hparams.lr_end),
+                pct_start=0.3,
+                three_phase=self.hparams.lr_three_phase,
+                epochs=self.trainer.max_epochs,
+                steps_per_epoch=self.hparams.steps_per_epoch,
+            )
+            return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'interval': 'step'}}
+        else:
+            raise ValueError('Invalid LR scheduler')

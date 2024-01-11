@@ -1,13 +1,24 @@
-import math
 from typing import Union
 
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from torch.fft import fft2, fftshift, ifftshift, ifft2
 from torch.nn import functional as F
 from torch.nn.common_types import _size_2_t
 from torch.nn.modules.utils import _pair
+
+
+def gauss_kernel(l=5, sig=1.):
+    """\
+    credits: https://stackoverflow.com/a/43346070/2709971
+    creates gaussian kernel with side length `l` and a sigma of `sig`
+    """
+    ax = np.linspace(-(l - 1) / 2., (l - 1) / 2., l)
+    gauss = np.exp(-0.5 * np.square(ax) / np.square(sig))
+    kernel = np.outer(gauss, gauss)
+    return kernel / np.sum(kernel)
 
 
 class PushPullConv2DUnit(torch.nn.Module):
@@ -56,6 +67,11 @@ class PushPullConv2DUnit(torch.nn.Module):
         else:
             self.avg = None
 
+        pooling = gauss_kernel(kernel_size[0], sig=0.25)
+        pooling = pooling / np.max(pooling)
+        pooling = 1 - pooling
+        self.pooling = torch.tensor(pooling, device=device, dtype=dtype)
+
         if bias:
             self.bias = torch.nn.Parameter(torch.empty(out_channels, device=device, dtype=dtype))
             self.bias.data.uniform_(-1, 1)  # random weight initialization
@@ -76,9 +92,25 @@ class PushPullConv2DUnit(torch.nn.Module):
         min_push = torch.amin(W, dim=(1, 2, 3), keepdim=True)
         max_push = torch.amax(W, dim=(1, 2, 3), keepdim=True)
         pull_kernel = -W + (max_push + min_push)
+        # pull_kernel = self.get_pull_kernel(W, pull_kernel)
+
+        # z = (W - W.mean(dim=(1, 2, 3), keepdims=True)) / W.std(dim=(1, 2, 3), keepdims=True)
+        # max_std = 2
+        # min_push = torch.amin(torch.where(torch.logical_and(z > -max_std, z < max_std), W, torch.inf),
+        #                       dim=(1, 2, 3), keepdim=True)
+        # max_push = torch.amax(torch.where(torch.logical_and(z > -max_std, z < max_std), W, -torch.inf),
+        #                       dim=(1, 2, 3), keepdim=True)
+        # pull_kernel = -W + (max_push + min_push)
+
+        # push_sum = torch.abs(torch.sum(W, dim=(1, 2, 3), keepdims=True))
+        # pull_sum = torch.abs(torch.sum(pull_kernel, dim=(1, 2, 3), keepdims=True))
+        # pull_kernel = pull_kernel / pull_sum * push_sum
+        # pull_kernel[:32] = self.normalize_pull_kernel(W[:32], pull_kernel[:32])
 
         push_response = self.push_conv(x)
         pull_response = F.conv2d(x, pull_kernel, None, self.stride, self.padding, self.dilation, self.groups)
+        # pull_response = self.pull_conv(x)
+
         if self.avg:
             pull_response = self.avg(pull_response)
         # plot_data.extend([('push_response', push_response), ('pull_response', pull_response)])
@@ -102,6 +134,132 @@ class PushPullConv2DUnit(torch.nn.Module):
         # plot_intermediate_response(plot_data, img_index=0, filters_to_plot=(9,))
 
         return x_out
+
+    def get_pull_kernel(self, push_kernel, pull_kernel):
+        #     function pull_kernel = getPullKernel(push_kernel, sd)
+        #     pull_kernel = -push_kernel + max(push_kernel(:)) + min(push_kernel(:));
+        #     pooling = fspecial('gaussian', size(pull_kernel), sd);
+        #     pooling = pooling / max(pooling(:));
+        #     pooling = 1 - pooling;
+        #     pull_kernel = ifft2(ifftshift(fftshift(fft2(pull_kernel)). * pooling));
+
+        d = (-2, -1)  # last two dimensions
+        pull = fftshift(fft2(pull_kernel, dim=d), dim=d)
+        pull = pull * self.pooling.to(pull.device)
+        pull = torch.real(ifft2(ifftshift(pull, dim=d), dim=d)).float()
+        return pull
+
+    # def get_pull_kernel(self, push_kernel, pull_kernel):
+    #     pos = push_kernel > 0
+    #     neg = push_kernel < 0
+    #     sumpos = torch.sum(torch.where(pos, push_kernel, 0), dim=(1, 2, 3))
+    #     sumneg = torch.sum(torch.where(neg, push_kernel, 0), dim=(1, 2, 3), keepdim=True)
+    #
+    #     sumpos_or_sum_neg_is_zero = torch.logical_or(sumpos == 0.0, sumneg.view(-1) == 0.0)
+    #     if torch.any(sumpos_or_sum_neg_is_zero):
+    #         i = sumpos_or_sum_neg_is_zero
+    #         push_sum = torch.sum(push_kernel, dim=(1, 2, 3), keepdims=True)
+    #         pull_sum = torch.sum(pull_kernel, dim=(1, 2, 3), keepdims=True)
+    #         pull_kernel[i] = pull_kernel[i] * push_sum[i] / pull_sum[i]
+    #     else:
+    #         sumpospull = torch.sum(torch.where(pull_kernel > 0, pull_kernel, 0), dim=(1, 2, 3))
+    #         interval = 0.01 * (2 * (sumpospull < sumpos) - 1)
+    #
+    #         filter_ids = torch.argwhere(torch.logical_not(sumpos_or_sum_neg_is_zero)).view(-1)
+    #         k = len(push_kernel[0].view(-1))  # number of weights in each filter
+    #         s = push_kernel[0].shape  # kernel size
+    #         d = push_kernel.device  # cpu or gpu device
+    #
+    #         for i in filter_ids:
+    #             # determine the number of shifts to consider
+    #             n = torch.abs(sumpos[i] - sumpospull[i]) / torch.abs(interval[i])
+    #             if interval[i] < 0:
+    #                 n = int(torch.ceil(torch.min(n, torch.max(pull_kernel[i]) / torch.abs(interval[i]))))
+    #             else:
+    #                 n = int(torch.abs(torch.floor(torch.min(n, torch.min(pull_kernel[i]) / torch.abs(interval[i])))))
+    #
+    #             # generate a matrix with all possible shifts
+    #             pull = pull_kernel[i].view(-1).repeat(n, 1) + (torch.arange(n).to(d) * interval[i]).repeat(k, 1).T
+    #             # sum the positive values in every row
+    #             sumpospull_for_all_shifts = torch.sum(pull * (pull > 0), dim=1)
+    #             # choose the row whose sum of positive values is the closest to the sum of all positive values in the push kernel
+    #             min_idx = torch.argmin(torch.abs(sumpospull_for_all_shifts - sumpos[i]))
+    #             # reshape the selected shifted kernel back to original dims
+    #             pull_kernel[i] = pull[min_idx].view(s)
+    #
+    #         # normalize the negative values of the pull kernel to have the same values as that of the push
+    #         pos_pull_values = torch.where(pull_kernel > 0, pull_kernel, 0)[filter_ids]
+    #         neg_pull_values = torch.where(pull_kernel < 0, pull_kernel, 0)[filter_ids]
+    #         sumpullneg = torch.sum(neg_pull_values, dim=(1, 2, 3), keepdim=True)
+    #         pull_kernel[filter_ids] = (neg_pull_values * sumneg[filter_ids] / sumpullneg) + pos_pull_values
+    #
+    #     return pull_kernel
+
+    # def get_pull_kernel(self, push_kernel, pull_kernel):
+    #     pos = push_kernel > 0
+    #     neg = push_kernel < 0
+    #     sumpos = torch.sum(torch.where(pos, push_kernel, 0), dim=(1, 2, 3))
+    #     sumneg = torch.sum(torch.where(neg, push_kernel, 0), dim=(1, 2, 3))
+    #
+    #     sumpos_or_sum_neg_is_zero = torch.logical_or(sumpos == 0.0, sumneg == 0.0)
+    #     if torch.any(sumpos_or_sum_neg_is_zero):
+    #         idx = sumpos_or_sum_neg_is_zero
+    #         push_sum = torch.sum(push_kernel, dim=(1, 2, 3), keepdims=True)
+    #         pull_sum = torch.sum(pull_kernel, dim=(1, 2, 3), keepdims=True)
+    #         pull_kernel[idx] = pull_kernel[idx] * push_sum[idx] / pull_sum[idx]
+    #     else:
+    #         shift = sumpos
+    #         s = torch.sum(torch.where(pull_kernel > 0, pull_kernel, 0), dim=(1, 2, 3))
+    #         interval = 0.001 * (2 * (s < shift) - 1)
+    #
+    #         filter_ids = torch.argwhere(torch.logical_not(sumpos_or_sum_neg_is_zero))
+    #         for idx in filter_ids:
+    #             counter = 1
+    #             while counter < 2:
+    #                 pull_kernel[idx] = pull_kernel[idx] + interval[idx]
+    #                 s0 = torch.sum(torch.where(pull_kernel[idx] > 0, pull_kernel[idx], 0))
+    #                 if (s0-shift[idx])*(s[idx]-shift[idx]) < 0:
+    #                     break
+    #                 else:
+    #                     s[idx] = s0
+    #                 counter = counter + 1
+    #             pos_pull_values = torch.where(pull_kernel[idx] > 0, pull_kernel[idx], 0)
+    #             neg_pull_values = torch.where(pull_kernel[idx] < 0, pull_kernel[idx], 0)
+    #             sumpullneg = torch.sum(neg_pull_values)
+    #             pull_kernel[idx] = (neg_pull_values * sumneg[idx] / sumpullneg) + pos_pull_values
+    #
+    #     return pull_kernel
+
+    # def normalize_pull_kernel(self, push_kernel, pull_kernel):
+    #     pos = push_kernel > 0
+    #     neg = push_kernel < 0
+    #     pull_kernel_norm = pull_kernel
+    #
+    #     is_pos_empty = torch.logical_not(torch.any(pos.view(pos.shape[0], -1), dim=1))
+    #     is_neg_empty = torch.logical_not(torch.any(neg.view(neg.shape[0], -1), dim=1))
+    #     kernel_is_all_pos_or_all_neg = torch.logical_or(is_pos_empty, is_neg_empty)
+    #
+    #     if torch.any(kernel_is_all_pos_or_all_neg):
+    #         idx = kernel_is_all_pos_or_all_neg
+    #         push_sum = torch.abs(torch.sum(push_kernel, dim=(1, 2, 3), keepdims=True))
+    #         pull_sum = torch.abs(torch.sum(pull_kernel, dim=(1, 2, 3), keepdims=True))
+    #         pull_kernel_norm[idx] = pull_kernel[idx] / pull_sum[idx] * push_sum[idx]
+    #     else:
+    #         idx = torch.logical_not(kernel_is_all_pos_or_all_neg)
+    #         sumpos = torch.abs(torch.sum(torch.where(pos, push_kernel, 0), dim=(1, 2, 3), keepdim=True))
+    #         sumneg = torch.abs(torch.sum(torch.where(neg, push_kernel, 0), dim=(1, 2, 3), keepdim=True))
+    #
+    #         pospull = torch.where(pull_kernel > 0, pull_kernel_norm, 0)
+    #         negpull = torch.where(pull_kernel < 0, pull_kernel_norm, 0)
+    #         pospull_sum = torch.abs(torch.sum(pospull, dim=(1, 2, 3), keepdims=True))
+    #         negpull_sum = torch.abs(torch.sum(negpull, dim=(1, 2, 3), keepdims=True))
+    #
+    #         pull_kernel_norm_pos = pospull / pospull_sum * sumpos
+    #         pull_kernel_norm_neg = negpull / negpull_sum * sumneg
+    #
+    #         pull_kernel_norm[idx] = pull_kernel_norm_pos[idx] + pull_kernel_norm_neg[idx]
+    #
+    #     return pull_kernel_norm
 
 
 def plot_intermediate_response(plot_data, img_index=0, filters_to_plot=(0,)):
@@ -157,7 +315,7 @@ def plot_minibatch_inputs(plot_data):
     plt.close()
 
 
-def plot_push_kernels(plot_data):
+def plot_push_kernels(plot_data, title=None):
     plot_data_cpu = [tensor.cpu().detach().numpy() for tensor in plot_data]
     num_rows = num_cols = math.ceil(math.sqrt(len(plot_data_cpu)))
     fig, ax = plt.subplots(num_rows, num_cols, sharex=True, sharey=True, figsize=(15, 7), constrained_layout=True)
@@ -172,135 +330,8 @@ def plot_push_kernels(plot_data):
         col_id = (col_id + 1) % num_cols
         if col_id == 0:
             row_id += 1
+    # if title:
+    #     plt.title(title)
     plt.tight_layout()
     plt.show()
     plt.close()
-
-
-import torch
-import math
-from torch import nn
-import torch.nn.functional as F
-
-
-class PPmodule2d(nn.Module):
-    """
-    Implementation of the Push-Pull layer from:
-    [1] N. Strisciuglio, M. Lopez-Antequera, N. Petkov,
-    Enhanced robustness of convolutional networks with a push–pull inhibition layer,
-    Neural Computing and Applications, 2020, doi: 10.1007/s00521-020-04751-8
-
-    It is an extension of the Conv2d module, with extra arguments:
-
-    * :attr:`alpha` controls the weight of the inhibition. (default: 1 - same strength as the push kernel)
-    * :attr:`scale` controls the size of the pull (inhibition) kernel (default: 2 - double size).
-    * :attr:`dual_output` determines if the response maps are separated for push and pull components.
-    * :attr:`train_alpha` controls if the inhibition strength :attr:`alpha` is trained (default: False).
-
-
-    Args:
-        in_channels (int): Number of channels in the input image
-        out_channels (int): Number of channels produced by the convolution
-        kernel_size (int or tuple): Size of the convolving kernel
-        stride (int or tuple, optional): Stride of the convolution. Default: 1
-        padding (int or tuple, optional): Zero-padding added to both sides of the input. Default: 0
-        dilation (int or tuple, optional): Spacing between kernel elements. Default: 1
-        groups (int, optional): Number of blocked connections from input channels to output channels. Default: 1
-        bias (bool, optional): If ``True``, adds a learnable bias to the output. Default: ``True``
-        alpha (float, optional): Strength of the inhibitory (pull) response. Default: 1
-        scale (float, optional): size factor of the pull (inhibition) kernel with respect to the pull kernel. Default: 2
-        dual_output (bool, optional): If ``True``, push and pull response maps are places into separate channels of the output. Default: ``False``
-        train_alpha (bool, optional): If ``True``, set alpha (inhibition strength) as a learnable parameters. Default: ``False``
-    """
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=False,
-                 alpha=1, scale=2, dual_output=False,
-                 train_alpha=False):
-        super(PPmodule2d, self).__init__()
-
-        self.dual_output = dual_output
-        self.train_alpha = train_alpha
-
-        # Note: the dual output is not tested yet
-        if self.dual_output:
-            assert (out_channels % 2 == 0)
-            out_channels = out_channels // 2
-
-        # Push kernels (is the one for which the weights are learned - the pull kernel is derived from it)
-        self.push = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias=bias)
-
-        """
-        # Bias: push and pull convolutions will have bias=0.
-        # If the PP kernel has bias, it is computed next to the combination of the 2 convolutions
-        if bias:
-            self.bias = nn.Parameter(torch.Tensor(out_channels))
-            # Inizialize bias
-            n = in_channels
-            for k in self.push.kernel_size:
-                n *= k
-            stdv = 1. / math.sqrt(n)
-            self.bias.data.uniform_(-stdv, stdv)
-        else:
-            self.register_parameter('bias', None)
-        """
-
-        # Configuration of the Push-Pull inhibition
-        if not self.train_alpha:
-            # when alpha is an hyper-parameter (as in [1])
-            self.alpha = alpha
-        else:
-            # when alpha is a trainable parameter
-            k = 1
-            self.alpha = nn.Parameter(k * torch.ones(1, out_channels, 1, 1), requires_grad=True)
-            r = 1. / math.sqrt(in_channels * out_channels)
-            self.alpha.data.uniform_(.5-r, .5+r)  # math.sqrt(n) / 2)  # (-stdv, stdv)
-
-        self.scale_factor = scale
-        push_size = self.push.weight[0].size()[1]
-
-        # compute the size of the pull kernel
-        if self.scale_factor == 1:
-            pull_size = push_size
-        else:
-            pull_size = math.floor(push_size * self.scale_factor)
-            if pull_size % 2 == 0:
-                pull_size += 1
-
-        # upsample the pull kernel from the push kernel
-        self.pull_padding = pull_size // 2 - push_size // 2 + padding
-        self.up_sampler = nn.Upsample(size=(pull_size, pull_size),
-                                      mode='bilinear',
-                                      align_corners=True)
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        # with torch.no_grad():
-        if self.scale_factor == 1:
-            pull_weights = self.push.weight
-        else:
-            pull_weights = self.up_sampler(self.push.weight)
-        # pull_weights.requires_grad = False
-
-        bias = self.push.bias
-        if self.push.bias is not None:
-            bias = -self.push.bias
-
-        push = self.relu(self.push(x))
-        pull = self.relu(F.conv2d(x,
-                                  -pull_weights,
-                                  bias,
-                                  self.push.stride,
-                                  self.pull_padding, self.push.dilation,
-                                  self.push.groups))
-
-        alpha = self.alpha
-        if self.train_alpha:
-            # alpha is greater or equal than 0
-            alpha = self.relu(self.alpha)
-
-        if self.dual_output:
-            x = torch.cat([push, pull], dim=1)
-        else:
-            x = push - alpha * pull
-            # + self.bias.reshape(1, self.push.out_channels, 1, 1) #.repeat(s[0], 1, s[2], s[3])
-        return x

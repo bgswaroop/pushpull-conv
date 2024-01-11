@@ -9,7 +9,7 @@ from pytorch_lightning.strategies import DDPStrategy
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from tqdm import tqdm
 
-from data import get_dataset
+from data import get_dataset, get_augmentation
 from models import get_classifier
 
 
@@ -60,6 +60,7 @@ def parse_args():
     parser.add_argument('--weight_decay', type=float, default=1e-4)  # regularization
     parser.add_argument('--hash_length', type=int, default=64)
     parser.add_argument('--quantization_weight', type=float, default=1e-4)
+    parser.add_argument('--augmentation', default='none', type=str, choices=['AugMix', 'AutoAug', 'RandAug', 'none'])
 
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
@@ -77,33 +78,68 @@ def parse_args():
     else:
         args.loss_type = 'default'  # cce for classification and CSQ for retrieval
 
+    args.augmentation = get_augmentation(args.augmentation, args.dataset_name)
+
     torch.use_deterministic_algorithms(True, warn_only=True)
 
-    if 'imagenet100' in args.dataset_name or 'imagenet200' in args.dataset_name:
-        args.max_epochs = 20
-        args.batch_size = 64  # use 128 for imagenet
-        args.lr_scheduler = 'one_cycle'
-        args.lr_initial = 5e-3
-        args.lr_max = 0.2
-        args.lr_end = 5e-6
-        args.weight_decay = 1e-5
-    elif 'imagenet' in args.dataset_name:
-        args.max_epochs = 20
-        args.batch_size = 128
-        args.lr_initial = 0.05
-        args.lr_max = 1.0
-        args.lr_end = 5e-5
-        args.lr_scheduler = 'one_cycle'
-        args.weight_decay = 1e-5
-    elif args.dataset_name == 'cifar10':
-        # The following config is not stable for ResNet50 + cifar10 + retrieval
-        args.max_epochs = 30
-        args.batch_size = 128
-        args.lr_scheduler = 'one_cycle'
-        args.lr_initial = 5e-3
-        args.lr_max = 0.2
-        args.lr_end = 5e-6
-        args.weight_decay = 1e-5
+    if args.task == 'classification':
+        if 'imagenet100' in args.dataset_name or 'imagenet200' in args.dataset_name:
+            args.max_epochs = 20
+            args.batch_size = 64  # use 128 for imagenet
+            args.lr_scheduler = 'one_cycle'
+            args.lr_three_phase = False
+            args.lr_initial = 5e-3
+            args.lr_max = 0.2
+            args.lr_end = 5e-6
+            args.weight_decay = 1e-5
+        elif 'imagenet' in args.dataset_name:
+            args.max_epochs = 20  # 90 (20) epochs for long (short) training
+            args.batch_size = 128  # 256 (128) when num_epochs = 90 (20)
+            args.lr_scheduler = 'one_cycle'
+            args.lr_three_phase = False
+            args.lr_initial = 0.05
+            args.lr_max = 1.0
+            args.lr_end = 5e-5
+            args.weight_decay = 1e-5
+        elif args.dataset_name == 'cifar10':
+            args.max_epochs = 30
+            args.batch_size = 64
+            args.lr_scheduler = 'one_cycle'
+            args.lr_three_phase = False
+            args.lr_initial = 5e-3
+            args.lr_max = 0.2
+            args.lr_end = 5e-6
+            args.weight_decay = 1e-5
+
+    elif args.task == 'retrieval':
+        if 'imagenet100' in args.dataset_name or 'imagenet200' in args.dataset_name:
+            args.max_epochs = 50
+            args.batch_size = 64  # use 128 for imagenet
+            args.lr_scheduler = 'one_cycle'
+            args.lr_three_phase = True
+            args.lr_initial = 5e-3
+            args.lr_max = 0.1
+            args.lr_end = 5e-6
+            args.weight_decay = 1e-4
+        elif 'imagenet' in args.dataset_name:
+            args.max_epochs = 50  # 90 (20) epochs for long (short) training
+            args.batch_size = 128  # 256 (128) when num_epochs = 90 (20)
+            args.lr_scheduler = 'one_cycle'
+            args.lr_three_phase = True
+            args.lr_initial = 5e-3
+            args.lr_max = 0.1
+            args.lr_end = 5e-6
+            args.weight_decay = 1e-4
+        elif args.dataset_name == 'cifar10':
+            args.max_epochs = 50
+            args.batch_size = 128
+            args.lr_scheduler = 'one_cycle'
+            args.lr_three_phase = True
+            args.lr_initial = 5e-3
+            args.lr_max = 0.1
+            args.lr_end = 5e-6
+            args.weight_decay = 1e-4
+
     return args
 
 
@@ -112,7 +148,7 @@ def train_on_clean_images(args, ray_tune=False):
     # ------------
     # data
     # ------------
-    dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
+    dataset = get_dataset(args.dataset_name, args.dataset_dir, args.augmentation, img_size=args.img_size)
     train_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=True)
     val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=False)
     args.num_classes = dataset.get_num_classes()
@@ -144,21 +180,23 @@ def train_on_clean_images(args, ray_tune=False):
     # training
     # ------------
     ckpt_callback1 = ModelCheckpoint(mode='min', monitor='loss_val', filename='{epoch}-{loss_val:.2f}', save_last=True)
+    callbacks = [ckpt_callback1]
     if args.task == 'classification':
         ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top1_acc_val', filename='{epoch}-{top1_acc_val:.2f}')
         ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top5_acc_val', filename='{epoch}-{top5_acc_val:.2f}')
         tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
                                                     "top5_acc_val": "top5_acc_val"}, on="validation_end")
+        callbacks.extend([ckpt_callback2, ckpt_callback3])
     elif args.task == 'retrieval':
-        ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
-        ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')
-        tune_callback = TuneReportCallback(metrics={"top1000_mAP_val": "top1000_mAP_val", }, on="validation_end")
+        # ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
+        # ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')
+        tune_callback = TuneReportCallback(metrics={"top200_mAP_val": "top200_mAP_val", }, on="validation_end")
     else:
         raise ValueError('Invalid task!')
     lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
     progress_bar_callback = LitProgressBar(refresh_rate=200)
 
-    callbacks = [ckpt_callback1, ckpt_callback2, ckpt_callback3, lr_monitor_callback, progress_bar_callback]
+    callbacks.extend([lr_monitor_callback, progress_bar_callback])
     callbacks = callbacks + [tune_callback] if ray_tune else callbacks
 
     trainer = pl.Trainer.from_argparse_args(args, logger=logger, callbacks=callbacks,
@@ -167,8 +205,9 @@ def train_on_clean_images(args, ray_tune=False):
     if args.task == 'classification':
         trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[val_loader])
     elif args.task == 'retrieval':
-        retrieval_database = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
-        trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[retrieval_database, val_loader])
+        # retrieval_database = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
+        trainer.fit(model, train_loader, ckpt_path=args.ckpt,
+                    val_dataloaders=[val_loader, ])  # [val_loader, retrieval_database]
 
 
 def run_flow():

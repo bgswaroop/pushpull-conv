@@ -84,55 +84,58 @@ def save_scores(exp_names, scores_on_clean_dataset, errors, errors_wrt_baseline,
         df.to_csv(save_dir.joinpath(filename))
 
 
+def plot_scores(experiments, all_scores, dataset_name, compile_scores_dir):
+    from matplotlib import pyplot as plt
+    import numpy as np
+
+    plt.figure(dpi=300)
+    for exp_name, scores in zip(experiments, all_scores):
+        severity_0 = 1 - scores.pop('clean')['top1']
+        severity_1to5 = np.array([k['top1'] for k in scores.values()])
+        severity_1to5 = list(1 - np.mean(severity_1to5, axis=0))
+        all_severities = [severity_0] + severity_1to5
+        plt.plot([0, 1, 2, 3, 4, 5], all_severities, label=exp_name)
+
+    plt.title(f'Errors vs Corruption severity on {dataset_name}')
+    plt.xlabel('Severity level')
+    plt.ylabel('Errors')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(compile_scores_dir.joinpath('top1_scores_vs_severity.png'))
+
 def run_flow():
-    compile_scores_dir = Path(r'/home/guru/runtime_data/pushpull-conv/resnet18_cifar10_classification_w_relu')
-    dataset_name = 'cifar10-c'
-    baseline_exp_dir = '/home/guru/runtime_data/pushpull-conv/resnet18_cifar10_classification_w_relu/resnet18'
+    compile_scores_dir = Path(r'/home/guru/runtime_data/pushpull-conv/dev_data_aug_imagenet')
+    dataset_name = 'imagenet-c'
+    baseline_exp_dir = '/home/guru/runtime_data/pushpull-conv/dev_data_aug_imagenet/resnet50'
     experiments = [
-        'resnet18',
-        # 'resnet50_avg3_inh0.5',
-        # 'resnet50_avg3_inh1',
-        # 'resnet50_avg3_inh2',
-        # 'resnet50_avg3_inh3',
-        # 'resnet50_avg3_inh4',
-        # 'resnet50_avg3_inh5',
-        # 'resnet50_avg3_inh6',
-        # 'resnet50_avg5_inh0.5',
-        # 'resnet50_avg5_inh1',
-        # 'resnet50_avg5_inh2',
-        # 'resnet50_avg5_inh3',
-        # 'resnet50_avg5_inh4',
-        # 'resnet50_avg5_inh5',
-        # 'resnet50_avg5_inh6',
-        'resnet18_avg3_inh_trainable',
-        'resnet18_avg5_inh_trainable',
-
-        # 'resnet50_high_lr_bs128',
-        # 'resnet50_avg3_inh_trainable_high_lr_bs128',
-        # 'resnet50_avg5_inh_trainable_high_lr_bs128',
-        # 'resnet50_bs64',
-        # 'resnet50_avg3_inh_trainable_bs64',
-        # 'resnet50_avg5_inh_trainable_bs64',
-        # 'resnet50_bs128',
-        # 'resnet50_avg3_inh_trainable_bs128',
-        # 'resnet50_avg5_inh_trainable_bs128',
-        # 'resnet50_bs256',
-        # 'resnet50_avg3_inh_trainable_bs256',
-        # 'resnet50_avg5_inh_trainable_bs256',
-
+        # 'strisciuglio_resnet50_inh_trainable',
+        # 'vasconcelos_resnet50',
+        # 'zhang_resnet50',
+        'resnet50',
+        'resnet50_avg3',
+        'resnet50_avg5',
+        'resnet50_augmix',
+        'resnet50_augmix_avg3',
+        'resnet50_augmix_avg5',
+        # 'resnet50_autoaug',
+        # 'resnet50_autoaug_avg3',
+        # 'resnet50_autoaug_avg5',
     ]
 
     errors_wrt_baseline = []
     scores_on_clean_dataset = []
+    all_scores = []
     errors = []
     for exp in experiments:
         with open(compile_scores_dir.joinpath(rf'{exp}/results/all_scores.json')) as f:
             exp_data = json.load(f)
             errors_wrt_baseline.append(exp_data[dataset_name]['errors_wrt_baseline'][baseline_exp_dir])
             scores_on_clean_dataset.append(exp_data[dataset_name]['scores']['clean'])
+            all_scores.append(exp_data[dataset_name]['scores'])
             errors.append(exp_data[dataset_name]['errors'])
 
     save_scores(experiments, scores_on_clean_dataset, errors, errors_wrt_baseline, compile_scores_dir)
+    plot_scores(experiments, all_scores, dataset_name, compile_scores_dir)
 
 
 if __name__ == '__main__':

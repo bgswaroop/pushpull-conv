@@ -5,14 +5,15 @@ import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR, OneCycleLR
 from torchmetrics.functional import accuracy
-
+import scipy
+from pathlib import Path
 
 class BaseNet(pl.LightningModule):
     def __init__(self):
         super(BaseNet, self).__init__()
 
     def training_step(self, batch, batch_idx):
-        loss, acc1, acc5 = self.evaluate(batch, stage='train')
+        loss, acc1, acc5 = self.evaluate(batch, stage='train', batch_idx=batch_idx)
         return loss
 
     # def training_epoch_end(self, outputs: EPOCH_OUTPUT) -> None:
@@ -44,7 +45,7 @@ class BaseNet(pl.LightningModule):
     #     df = pd.concat([df, data], ignore_index=True)
     #     df.to_csv(log_file, index=False)
 
-    def evaluate(self, batch, stage=None):
+    def evaluate(self, batch, stage=None, batch_idx=None):
         x, y, y_soft = batch
         y_hat = self(x)
         acc1 = accuracy(y_hat, y, top_k=1)
@@ -71,7 +72,7 @@ class BaseNet(pl.LightningModule):
         return loss, acc1, acc5
 
     def validation_step(self, batch, batch_idx, dataloader_idx: int = 0):
-        loss, acc1, acc5 = self.evaluate(batch, stage='val')
+        loss, acc1, acc5 = self.evaluate(batch, stage='val', batch_idx=batch_idx)
         self.log('loss_val', loss, add_dataloader_idx=False, logger=False, sync_dist=True)
         self.log('top1_acc_val', acc1, add_dataloader_idx=False, logger=False, sync_dist=True)
         self.log('top5_acc_val', acc5, add_dataloader_idx=False, logger=False, sync_dist=True)
@@ -106,6 +107,7 @@ class BaseNet(pl.LightningModule):
                 max_lr=self.hparams.lr_max,
                 final_div_factor=int(self.hparams.lr_max / self.hparams.lr_end),
                 pct_start=0.3,
+                three_phase=self.hparams.lr_three_phase,
                 epochs=self.trainer.max_epochs,
                 steps_per_epoch=self.hparams.steps_per_epoch,
             )

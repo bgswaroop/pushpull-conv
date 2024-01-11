@@ -69,7 +69,7 @@ def compute_model_robustness_metrics(scores, baseline_scores):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--img_size', default=224, type=int, choices=[32, 224])
-    parser.add_argument('--batch_size', default=100, type=int)
+    parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--dataset_dir', default=r'/data/p288722/datasets/cifar', type=str)
     parser.add_argument('--dataset_name', default='cifar10',
                         help="'cifar10', 'imagenet100', 'imagenet200', 'imagenet'"
@@ -118,13 +118,22 @@ def parse_args():
         args.baseline_results_file = Path(args.baseline_model_logs_dir).joinpath('results/all_scores.json')
 
     model_ckpt = torch.load(args.model_ckpt)
-    args.num_classes = model_ckpt['hyper_parameters'].get('num_classes', None)
-    args.hash_length = model_ckpt['hyper_parameters'].get('hash_length', None)
-    args.quantization_weight = model_ckpt['hyper_parameters'].get('quantization_weight', None)
-    args.avg_kernel_size = model_ckpt['hyper_parameters'].get('avg_kernel_size', None)
-    args.pull_inhibition_strength = model_ckpt['hyper_parameters'].get('pull_inhibition_strength', None)
-    args.trainable_pull_inhibition = model_ckpt['hyper_parameters'].get('trainable_pull_inhibition', False)
-    args.use_push_pull = model_ckpt['hyper_parameters'].get('use_push_pull', False)
+    if 'hyper_parameters' in model_ckpt:
+        args.num_classes = model_ckpt['hyper_parameters'].get('num_classes', None)
+        args.hash_length = model_ckpt['hyper_parameters'].get('hash_length', None)
+        args.quantization_weight = model_ckpt['hyper_parameters'].get('quantization_weight', None)
+        args.avg_kernel_size = model_ckpt['hyper_parameters'].get('avg_kernel_size', None)
+        args.pull_inhibition_strength = model_ckpt['hyper_parameters'].get('pull_inhibition_strength', None)
+        args.trainable_pull_inhibition = model_ckpt['hyper_parameters'].get('trainable_pull_inhibition', False)
+        args.use_push_pull = model_ckpt['hyper_parameters'].get('use_push_pull', False)
+    else:
+        args.num_classes = 1000
+        args.hash_length = 64
+        args.quantization_weight = 1e-4
+        args.avg_kernel_size = 3
+        args.pull_inhibition_strength = 1.0
+        args.trainable_pull_inhibition = True
+        args.use_push_pull = False
 
     return args
 
@@ -135,9 +144,17 @@ def predict_with_noise():
 
     args.logs_dir = args.predict_model_logs_dir
     model = get_classifier(args)
-    model.load_state_dict(torch.load(args.model_ckpt)['state_dict'])
+    state_dict = torch.load(args.model_ckpt)['state_dict']
+
+    # Mapping the weights to the corresponding ones as per the ResNet names in this implementation
+    state_dict = {k.removeprefix('module.'):v for k,v in state_dict.items()}
+    state_dict = {k.replace('bn1.', 'bn.') if k.startswith('bn1.') else k: v for k, v in state_dict.items()}
+    state_dict = {k.replace('fc.', 'classifier.') if k.startswith('fc.') else k: v for k, v in state_dict.items()}
+
+    model.load_state_dict(state_dict)
 
     trainer = pl.Trainer.from_argparse_args(args)
+    device = trainer.strategy.root_device  # torch.device(f'cuda:{trainer.device_ids[0]}')
 
     clean_dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
 
@@ -181,7 +198,7 @@ def predict_with_noise():
     elif args.task == 'retrieval':
         scores['clean'] = compute_map_score(train_predictions, train_ground_truths,
                                             test_predictions, test_ground_truths,
-                                            args.device, return_as_float=True)
+                                            device, return_as_float=True)
 
     dataset = get_dataset(args.corrupted_dataset_name, args.corrupted_dataset_dir, args.num_severities)
     corruption_types = args.corruption_types if args.corruption_types else dataset.test_corruption_types
@@ -208,20 +225,21 @@ def predict_with_noise():
 
                 output = top1_classwise_accuracy(test_predictions, test_ground_truths)
                 classwise_index = sorted(output.keys())
-                classwise_scores[f'{corruption_type}_{severity_level}'] = [float(output[x].item()) for x in
-                                                                           classwise_index]
+                classwise_scores[f'{corruption_type}_{severity_level}'] = \
+                    [float(output[x].item()) for x in classwise_index]
 
             elif args.task == 'retrieval':
                 map_score = compute_map_score(train_predictions, train_ground_truths,
                                               test_predictions, test_ground_truths,
-                                              args.device, return_as_float=True)
+                                              device, return_as_float=True)
                 for item in scores['clean']:
                     scores[corruption_type][item].append(map_score[item])
 
-    classwise_results = pd.DataFrame(classwise_scores, index=classwise_index)
-    classwise_results = classwise_results.rename_axis(index='Classwise results')
-    classwise_scores_file = args.results_file.parent.joinpath('classwise_scores.csv')
-    classwise_results.to_csv(classwise_scores_file, sep=',')
+    if args.task == 'classification':
+        classwise_results = pd.DataFrame(classwise_scores, index=classwise_index)
+        classwise_results = classwise_results.rename_axis(index='Classwise results')
+        classwise_scores_file = args.results_file.parent.joinpath('classwise_scores.csv')
+        classwise_results.to_csv(classwise_scores_file, sep=',')
 
     CE, mCE = compute_mean_corruption_error(scores)
     corruption_errors = {'CE': CE, 'mCE': mCE}
