@@ -1,12 +1,11 @@
 from typing import Any
 
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR, OneCycleLR
 from torchmetrics.functional import accuracy
-import scipy
-from pathlib import Path
+
 
 class BaseNet(pl.LightningModule):
     def __init__(self):
@@ -114,5 +113,3 @@ class BaseNet(pl.LightningModule):
             return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'interval': 'step'}}
         else:
             raise ValueError('Invalid LR scheduler')
-
-

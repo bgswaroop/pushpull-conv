@@ -20,18 +20,18 @@
 # Dataset    | CIFAR-10 | ImageNet200 | ImageNet100 | ImageNet-1k |
 #------------|----------|-------------|-------------|-------------|
 # AlexNet    | 3.5 hrs  |     hrs     |             |             |
-# ResNet18   | 1.5 hrs  |  14 hrs     |   12 hrs    |
-# ResNet34   | 5.5 hrs  |  14 hrs     |   13 hrs    |
-# ResNet50   | 6.5 hrs  |  15 hrs     |   15 hrs    |
+# ResNet18   | 1.5 hrs  |  14 hrs     |   12 hrs    |             |
+# ResNet34   | 5.5 hrs  |  14 hrs     |   13 hrs    |             |
+# ResNet50   | 6.5 hrs  |  15 hrs     |   15 hrs    |             |
 
 module load CUDA/11.1.1-GCC-10.2.0
 source /data/p288722/python_venv/pushpull-conv/bin/activate
 
 train_script="$HOME/git_code/pushpull-conv/project/train_flow.py"
-logs_dir="/data/p288722/runtime_data/pushpull-conv"
+logs_dir="/scratch/p288722/runtime_data/pushpull-conv"
 task="classification"
 dataset_name="imagenet100"
-dataset_dir="/data/p288722/datasets/imagenet"
+dataset_dir="/scratch/p288722/datasets/imagenet"
 corrupted_dataset_dir="/scratch/p288722/datasets/imagenet/imagenet-c"
 corrupted_dataset_name="imagenet100-c"
 model="resnet50"

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import torch
 from torch.optim.lr_scheduler import OneCycleLR, StepLR
 

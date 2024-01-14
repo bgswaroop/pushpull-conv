@@ -1,12 +1,12 @@
 import argparse
 from pathlib import Path
 
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import torch
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, TQDMProgressBar
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.strategies import DDPStrategy
-from ray.tune.integration.pytorch_lightning import TuneReportCallback
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor, TQDMProgressBar
+from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.strategies import DDPStrategy
+# from ray.tune.integration.lightning.pytorch import TuneReportCallback
 from tqdm import tqdm
 
 from data import get_dataset, get_augmentation
@@ -184,20 +184,20 @@ def train_on_clean_images(args, ray_tune=False):
     if args.task == 'classification':
         ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top1_acc_val', filename='{epoch}-{top1_acc_val:.2f}')
         ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top5_acc_val', filename='{epoch}-{top5_acc_val:.2f}')
-        tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
-                                                    "top5_acc_val": "top5_acc_val"}, on="validation_end")
+        # tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
+        #                                             "top5_acc_val": "top5_acc_val"}, on="validation_end")
         callbacks.extend([ckpt_callback2, ckpt_callback3])
     elif args.task == 'retrieval':
-        # ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
-        # ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')
-        tune_callback = TuneReportCallback(metrics={"top200_mAP_val": "top200_mAP_val", }, on="validation_end")
+        ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
+        ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')
+        # tune_callback = TuneReportCallback(metrics={"top200_mAP_val": "top200_mAP_val", }, on="validation_end")
     else:
         raise ValueError('Invalid task!')
     lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
     progress_bar_callback = LitProgressBar(refresh_rate=200)
 
     callbacks.extend([lr_monitor_callback, progress_bar_callback])
-    callbacks = callbacks + [tune_callback] if ray_tune else callbacks
+    # callbacks = callbacks + [tune_callback] if ray_tune else callbacks
 
     trainer = pl.Trainer.from_argparse_args(args, logger=logger, callbacks=callbacks,
                                             strategy=DDPStrategy(find_unused_parameters=False), )

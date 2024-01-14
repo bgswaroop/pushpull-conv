@@ -1,19 +1,20 @@
 import json
-import os
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional, Callable, Tuple, Any
 
 import PIL.Image
-import lmdb
 import numpy as np
-import pyarrow as pa
 import torch
 import torchvision.datasets
 from PIL import PngImagePlugin
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms, InterpolationMode
+
+# import os
+# import lmdb
+# import pyarrow as pa
 
 LARGE_ENOUGH_NUMBER = 100
 PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024 ** 2)
@@ -79,7 +80,7 @@ class CIFAR10:
     def __init__(
             self,
             root: str,
-            augment = None,
+            augment=None,
             download: bool = True,
     ) -> None:
         self.root = root
@@ -196,7 +197,7 @@ class _ImageNetBase(Dataset):
             img_size: int,
             num_classes: int,
             data_fraction: float = 1.0,
-            augment = None,
+            augment=None,
     ) -> None:
         self.root = Path(root)
         self.split = split
@@ -217,12 +218,12 @@ class _ImageNetBase(Dataset):
             ])
         else:
             self._transform_train = transforms.Compose([
-                    transforms.Resize(256, InterpolationMode.BILINEAR),
-                    transforms.RandomCrop(img_size),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.ToTensor(),
-                    _normalize
-                ])
+                transforms.Resize(256, InterpolationMode.BILINEAR),
+                transforms.RandomCrop(img_size),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                _normalize
+            ])
         self._transform_test = transforms.Compose([
             transforms.Resize(img_size, InterpolationMode.BILINEAR),
             transforms.CenterCrop(img_size),
@@ -235,20 +236,20 @@ class _ImageNetBase(Dataset):
         self._setup()
         # self._lmdb_setup()
 
-    def _lmdb_setup(self):
-
-        if self.split == 'train':
-            self.transform = self._transform_train
-        elif self.split == 'val':
-            self.transform = self._transform_test
-        self.root = str(self.root.joinpath(self.split))
-
-        self.env = lmdb.open(self.root, subdir=os.path.isdir(self.root),
-                             readonly=True, lock=False,
-                             readahead=False, meminit=False)
-        with self.env.begin(write=False) as txn:
-            self.length = pa.deserialize(txn.get(b'__len__'))
-            self.keys = pa.deserialize(txn.get(b'__keys__'))
+    # def _lmdb_setup(self):
+    #
+    #     if self.split == 'train':
+    #         self.transform = self._transform_train
+    #     elif self.split == 'val':
+    #         self.transform = self._transform_test
+    #     self.root = str(self.root.joinpath(self.split))
+    #
+    #     self.env = lmdb.open(self.root, subdir=os.path.isdir(self.root),
+    #                          readonly=True, lock=False,
+    #                          readahead=False, meminit=False)
+    #     with self.env.begin(write=False) as txn:
+    #         self.length = pa.deserialize(txn.get(b'__len__'))
+    #         self.keys = pa.deserialize(txn.get(b'__keys__'))
 
     def _setup(self):
         labels_text = sorted([x.stem for x in self.root.glob('Annotations/CLS-LOC/train/*')])

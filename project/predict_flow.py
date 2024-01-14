@@ -3,8 +3,8 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
+import lightning.pytorch as pl
 import pandas as pd
-import pytorch_lightning as pl
 import torch
 from torchmetrics import Accuracy, ClasswiseWrapper
 from torchmetrics.functional import accuracy
@@ -147,7 +147,7 @@ def predict_with_noise():
     state_dict = torch.load(args.model_ckpt)['state_dict']
 
     # Mapping the weights to the corresponding ones as per the ResNet names in this implementation
-    state_dict = {k.removeprefix('module.'):v for k,v in state_dict.items()}
+    state_dict = {k.removeprefix('module.'): v for k, v in state_dict.items()}
     state_dict = {k.replace('bn1.', 'bn.') if k.startswith('bn1.') else k: v for k, v in state_dict.items()}
     state_dict = {k.replace('fc.', 'classifier.') if k.startswith('fc.') else k: v for k, v in state_dict.items()}
 
