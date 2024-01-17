@@ -44,3 +44,18 @@ def compute_map_score(train_hash_codes, train_ground_truths, query_hash_codes, q
             map_score[key] = float(value)
 
     return map_score
+
+
+def accuracy(y_hat: torch.Tensor, y: torch.Tensor, top_k: int = 1):
+    """
+    Compute accuracy for multi-class classification
+    :param y_hat: Logits, Softmax scores, or the output of the final classification layer of the network
+    :param y: True labels (expressed as indices, starting from 0)
+    :param top_k: Top k labels to consider for classification.
+    :return: top_k accuracy score
+    """
+    ranked_predictions = torch.argsort(y_hat, dim=1, descending=True)
+    top_k_predictions = ranked_predictions[:, :top_k]
+    top_k_results = torch.max(top_k_predictions == y.reshape(-1, 1), dim=1)[0]
+    top_k_accuracy = torch.mean(top_k_results.to(float))
+    return top_k_accuracy

@@ -7,11 +7,10 @@ import lightning.pytorch as pl
 import pandas as pd
 import torch
 from torchmetrics import Accuracy, ClasswiseWrapper
-from torchmetrics.functional import accuracy
 
 from data import get_dataset
 from models import get_classifier
-from models.utils import compute_map_score
+from models.utils import compute_map_score, accuracy
 
 
 def compute_mean_corruption_error(scores):

@@ -23,6 +23,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--img_size', default=224, type=int, choices=[32, 224])
     parser.add_argument('--batch_size', default=256, type=int)
+    parser.add_argument('--max_epochs', default=30, type=int)
     parser.add_argument('--dataset_dir', default='/home/guru/datasets/imagenet', type=str)
     parser.add_argument('--dataset_name', default='imagenet100',
                         help="'cifar10', 'imagenet100', 'imagenet200', 'imagenet'"
@@ -62,7 +63,7 @@ def parse_args():
     parser.add_argument('--quantization_weight', type=float, default=1e-4)
     parser.add_argument('--augmentation', default='none', type=str, choices=['AugMix', 'AutoAug', 'RandAug', 'none'])
 
-    parser = pl.Trainer.add_argparse_args(parser)
+    # parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
 
     assert Path(args.dataset_dir).exists(), f'dataset_dir {args.dataset_dir} does not exists!'
@@ -156,7 +157,7 @@ def train_on_clean_images(args, ray_tune=False):
 
     if args.training_type == 'student':
         data_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
-        trainer = pl.Trainer.from_argparse_args(args, strategy=DDPStrategy(find_unused_parameters=False), )
+        trainer = pl.Trainer(max_epochs=args.max_epochs, strategy=DDPStrategy(find_unused_parameters=False), )
 
         args_use_push_pull = args.use_push_pull
         args.use_push_pull = False
@@ -182,8 +183,8 @@ def train_on_clean_images(args, ray_tune=False):
     ckpt_callback1 = ModelCheckpoint(mode='min', monitor='loss_val', filename='{epoch}-{loss_val:.2f}', save_last=True)
     callbacks = [ckpt_callback1]
     if args.task == 'classification':
-        ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top1_acc_val', filename='{epoch}-{top1_acc_val:.2f}')
-        ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top5_acc_val', filename='{epoch}-{top5_acc_val:.2f}')
+        ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top1_acc_val', filename='{epoch}-{val/top1_acc:.2f}')
+        ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top5_acc_val', filename='{epoch}-{val/top5_acc:.2f}')
         # tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
         #                                             "top5_acc_val": "top5_acc_val"}, on="validation_end")
         callbacks.extend([ckpt_callback2, ckpt_callback3])
@@ -199,15 +200,15 @@ def train_on_clean_images(args, ray_tune=False):
     callbacks.extend([lr_monitor_callback, progress_bar_callback])
     # callbacks = callbacks + [tune_callback] if ray_tune else callbacks
 
-    trainer = pl.Trainer.from_argparse_args(args, logger=logger, callbacks=callbacks,
-                                            strategy=DDPStrategy(find_unused_parameters=False), )
+    trainer = pl.Trainer(max_epochs=args.max_epochs, logger=logger, callbacks=callbacks,
+                         strategy=DDPStrategy(find_unused_parameters=False), fast_dev_run=True)
 
     if args.task == 'classification':
         trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[val_loader])
     elif args.task == 'retrieval':
         # retrieval_database = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
-        trainer.fit(model, train_loader, ckpt_path=args.ckpt,
-                    val_dataloaders=[val_loader, ])  # [val_loader, retrieval_database]
+        # [val_loader, retrieval_database]
+        trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[val_loader, ])
 
 
 def run_flow():

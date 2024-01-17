@@ -252,25 +252,18 @@ class _ImageNetBase(Dataset):
     #         self.keys = pa.deserialize(txn.get(b'__keys__'))
 
     def _setup(self):
-        labels_text = sorted([x.stem for x in self.root.glob('Annotations/CLS-LOC/train/*')])
+        labels_text = sorted([x.stem for x in self.root.glob('train/*')])
         self.labels_txt_to_num = {x: idx for idx, x in enumerate(labels_text)}
         self.labels_num_to_txt = {idx: x for idx, x in enumerate(labels_text)}
 
         if self.split == 'train':
-            self.data = sorted(self.root.glob('Data/CLS-LOC/train/*/*'))
+            self.data = sorted(self.root.glob('train/*/*'))
             self.labels = [self.labels_txt_to_num[x.stem.split('_')[0]] for x in self.data]
             self.transform = self._transform_train
 
         elif self.split == 'val':
-            val_annotations = self.root.glob('Annotations/CLS-LOC/val/*.xml')
-            self.labels = {}
-            for file in val_annotations:
-                root = ET.parse(file).getroot()
-                label = root[5][0].text
-                filename = root[1].text
-                self.labels[filename] = self.labels_txt_to_num[label]
-            self.data = sorted(self.root.glob('Data/CLS-LOC/val/*'))
-            self.labels = [self.labels[x.stem] for x in self.data]
+            self.data = sorted(self.root.glob('val/*/*'))
+            self.labels = [self.labels_txt_to_num[x.parent.stem] for x in self.data]
             self.transform = self._transform_test
 
         else:
@@ -282,7 +275,7 @@ class _ImageNetBase(Dataset):
         if self.data_fraction != 1.0:
             self._select_stratified_data_fraction()
 
-        # Relabel the samples
+        # Relabel the samples (needed when num_classes < 1000)
         relabel_map = {x: idx for idx, x in enumerate(sorted(np.unique(self.labels)))}
         self.labels = [relabel_map[x] for x in self.labels]
         self.labels_txt_to_num = {self.labels_num_to_txt[old_id]: new_id for old_id, new_id in relabel_map.items()}

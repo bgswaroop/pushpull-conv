@@ -4,7 +4,8 @@ import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR, OneCycleLR
-from torchmetrics.functional import accuracy
+
+from project.models.utils import accuracy
 
 
 class BaseNet(pl.LightningModule):
@@ -13,6 +14,9 @@ class BaseNet(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, acc1, acc5 = self.evaluate(batch, stage='train', batch_idx=batch_idx)
+        self.log('train/loss', loss, sync_dist=True)
+        self.log('train/top1-accuracy', acc1, on_epoch=True, on_step=True, sync_dist=True)
+        self.log('train/top5-accuracy', acc5, on_epoch=True, on_step=True, sync_dist=True)
         return loss
 
     # def training_epoch_end(self, outputs: EPOCH_OUTPUT) -> None:
@@ -51,8 +55,9 @@ class BaseNet(pl.LightningModule):
         acc5 = accuracy(y_hat, y, top_k=5)
         loss = None
         if stage == 'test':
-            self.log('top1-accuracy', {stage: acc1}, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
-            self.log('top5-accuracy', {stage: acc5}, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
+            # self.log('top1-accuracy', {stage: acc1}, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
+            # self.log('top5-accuracy', {stage: acc5}, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
+            pass
         elif stage in {'train', 'val'}:
             if self.hparams.loss_type == 'distillation_loss':
                 # https://github.com/haitongli/knowledge-distillation-pytorch/blob/9937528f0be0efa979c745174fbcbe9621cea8b7/model/net.py#L100
@@ -64,21 +69,23 @@ class BaseNet(pl.LightningModule):
                                                    reduction='batchmean', log_target=True)
             else:
                 loss = F.cross_entropy(y_hat, y)
-            self.log('loss', {stage: loss}, sync_dist=True)
-            self.log('top1-accuracy', {stage: acc1}, on_epoch=True, on_step=False, sync_dist=True)
-            self.log('top5-accuracy', {stage: acc5}, on_epoch=True, on_step=False, sync_dist=True)
+            # self.log('loss', {stage: loss}, sync_dist=True)
+            # self.log('top1-accuracy', {stage: acc1}, on_epoch=True, on_step=False, sync_dist=True)
+            # self.log('top5-accuracy', {stage: acc5}, on_epoch=True, on_step=False, sync_dist=True)
 
         return loss, acc1, acc5
 
     def validation_step(self, batch, batch_idx, dataloader_idx: int = 0):
         loss, acc1, acc5 = self.evaluate(batch, stage='val', batch_idx=batch_idx)
-        self.log('loss_val', loss, add_dataloader_idx=False, logger=False, sync_dist=True)
-        self.log('top1_acc_val', acc1, add_dataloader_idx=False, logger=False, sync_dist=True)
-        self.log('top5_acc_val', acc5, add_dataloader_idx=False, logger=False, sync_dist=True)
+        self.log('val/loss', loss, add_dataloader_idx=False, on_epoch=True, sync_dist=True)
+        self.log('val/top1_acc', acc1, add_dataloader_idx=False, on_epoch=True, sync_dist=True)
+        self.log('val/top5_acc', acc5, add_dataloader_idx=False, on_epoch=True, sync_dist=True)
         return loss
 
     def test_step(self, batch, batch_idx):
-        self.evaluate(batch, stage='test')
+        loss, acc1, acc5 = self.evaluate(batch, stage='test')
+        self.log('test/top1_acc', acc1, on_epoch=True, sync_dist=True)
+        self.log('test/top5_acc', acc5, on_epoch=True, sync_dist=True)
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         x, y, y_soft = batch
@@ -86,7 +93,6 @@ class BaseNet(pl.LightningModule):
         return {'predictions': y_hat, 'ground_truths': y}
 
     def configure_optimizers(self):
-
         optimizer = torch.optim.SGD(self.parameters(),
                                     lr=self.hparams.lr_base,
                                     momentum=0.9,
