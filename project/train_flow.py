@@ -23,9 +23,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--img_size', default=224, type=int, choices=[32, 224])
     parser.add_argument('--batch_size', default=256, type=int)
-    parser.add_argument('--max_epochs', default=30, type=int)
+    parser.add_argument('--max_epochs', default=20, type=int)
     parser.add_argument('--dataset_dir', default='/home/guru/datasets/imagenet', type=str)
-    parser.add_argument('--dataset_name', default='imagenet100',
+    parser.add_argument('--dataset_name', default='imagenet',
                         help="'cifar10', 'imagenet100', 'imagenet200', 'imagenet'"
                              "or add a suffix '_20pc' for a 20 percent stratified training subset."
                              "'_20pc' is an example, can be any float [1.0, 99.0]."
@@ -41,13 +41,14 @@ def parse_args():
                         help='how many subprocesses to use for data loading. ``0`` means that the data will be '
                              'loaded in the main process. (default: ``2``)')
     parser.add_argument('--logs_version', default=None, type=int)
+    parser.add_argument('--accelerator', type=str, choices=['cpu', 'gpu', 'auto'])
 
     # Push Pull Convolutional Unit Params
     parser.add_argument('--use_push_pull', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--num_push_pull_layers', type=int, default=1)
     parser.add_argument('--avg_kernel_size', type=int, default=None, help='Size of the avg filter (int)')
     parser.add_argument('--pull_inhibition_strength', type=float, default=1.0)
-    parser.add_argument('--trainable_pull_inhibition', type=bool, default=False)
+    parser.add_argument('--trainable_pull_inhibition', type=bool, default=True)
 
     parser.add_argument('--training_type', default='teacher', type=str, choices=['teacher', 'student'])
     parser.add_argument('--teacher_ckpt', type=str, default=None, help='ckpt to determine soft-targets for the student')
@@ -180,11 +181,11 @@ def train_on_clean_images(args, ray_tune=False):
     # ------------
     # training
     # ------------
-    ckpt_callback1 = ModelCheckpoint(mode='min', monitor='loss_val', filename='{epoch}-{loss_val:.2f}', save_last=True)
+    ckpt_callback1 = ModelCheckpoint(mode='min', monitor='val_loss', filename='{epoch}-{val_loss:.2f}', save_last=True)
     callbacks = [ckpt_callback1]
     if args.task == 'classification':
-        ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top1_acc_val', filename='{epoch}-{val/top1_acc:.2f}')
-        ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top5_acc_val', filename='{epoch}-{val/top5_acc:.2f}')
+        ckpt_callback2 = ModelCheckpoint(mode='max', monitor='val_top1_acc', filename='{epoch}-{val_top1_acc:.2f}')
+        ckpt_callback3 = ModelCheckpoint(mode='max', monitor='val_top5_acc', filename='{epoch}-{val_top5_acc:.2f}')
         # tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
         #                                             "top5_acc_val": "top5_acc_val"}, on="validation_end")
         callbacks.extend([ckpt_callback2, ckpt_callback3])
@@ -200,8 +201,8 @@ def train_on_clean_images(args, ray_tune=False):
     callbacks.extend([lr_monitor_callback, progress_bar_callback])
     # callbacks = callbacks + [tune_callback] if ray_tune else callbacks
 
-    trainer = pl.Trainer(max_epochs=args.max_epochs, logger=logger, callbacks=callbacks,
-                         strategy=DDPStrategy(find_unused_parameters=False), fast_dev_run=True)
+    trainer = pl.Trainer(accelerator=args.accelerator, max_epochs=args.max_epochs, logger=logger, callbacks=callbacks,
+                         strategy=DDPStrategy(find_unused_parameters=False), fast_dev_run=False)
 
     if args.task == 'classification':
         trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[val_loader])

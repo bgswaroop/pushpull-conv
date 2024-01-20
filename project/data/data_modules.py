@@ -258,7 +258,7 @@ class _ImageNetBase(Dataset):
 
         if self.split == 'train':
             self.data = sorted(self.root.glob('train/*/*'))
-            self.labels = [self.labels_txt_to_num[x.stem.split('_')[0]] for x in self.data]
+            self.labels = [self.labels_txt_to_num[x.parent.stem] for x in self.data]
             self.transform = self._transform_train
 
         elif self.split == 'val':

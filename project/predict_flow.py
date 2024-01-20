@@ -70,7 +70,7 @@ def parse_args():
     parser.add_argument('--img_size', default=224, type=int, choices=[32, 224])
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--dataset_dir', default=r'/data/p288722/datasets/cifar', type=str)
-    parser.add_argument('--dataset_name', default='cifar10',
+    parser.add_argument('--dataset_name', default='imagenet',
                         help="'cifar10', 'imagenet100', 'imagenet200', 'imagenet'"
                              "or add a suffix '_20pc' for a 20 percent stratified training subset."
                              "'_20pc' is an example, can be any float [1.0, 99.0]")

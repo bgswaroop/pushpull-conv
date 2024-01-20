@@ -5,7 +5,7 @@ from .data_modules import CIFAR10, CIFAR10C, ImageNet, ImageNetC
 __all__ = (
     'CIFAR10', 'CIFAR10C',
     'ImageNet', 'ImageNetC',
-    'get_dataset'
+    'get_dataset', 'get_augmentation'
 )
 
 
