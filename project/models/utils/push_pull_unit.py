@@ -87,6 +87,30 @@ class PushPullConv2DUnit(torch.nn.Module):
         self.push_conv.weight = value
 
     def forward(self, x):
+        push_kernel = self.push_conv.weight
+        min_push = torch.amin(push_kernel, dim=(2, 3), keepdim=True)  # why amin?
+        max_push = torch.amax(push_kernel, dim=(2, 3), keepdim=True)
+        pull_kernel = -push_kernel + (max_push + min_push)
+        push_sum = torch.sum(push_kernel, dim=(2, 3), keepdims=True)
+        pull_sum = torch.sum(pull_kernel, dim=(2, 3), keepdims=True)
+        pull_kernel = pull_kernel / pull_sum * push_sum
+
+        push_response = self.push_conv(x)
+        pull_response = F.conv2d(x, pull_kernel, None, self.stride, self.padding, self.dilation, self.groups)
+
+        if self.avg:
+            pull_response = self.avg(pull_response)
+
+        push_response = F.relu_(push_response)
+        pull_response = F.relu_(pull_response)
+        x_out = push_response - pull_response
+
+        if self.bias is not None:
+            x_out = x_out + self.bias.view((1, -1, 1, 1))
+
+        return x_out
+
+    def _forward_cvpr(self, x):
         # plot_data = [('input', x)]
         W = self.push_conv.weight
         min_push = torch.amin(W, dim=(1, 2, 3), keepdim=True)

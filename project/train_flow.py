@@ -41,7 +41,7 @@ def parse_args():
                         help='how many subprocesses to use for data loading. ``0`` means that the data will be '
                              'loaded in the main process. (default: ``2``)')
     parser.add_argument('--logs_version', default=None, type=int)
-    parser.add_argument('--accelerator', type=str, choices=['cpu', 'gpu', 'auto'])
+    parser.add_argument('--accelerator', type=str, choices=['cpu', 'gpu', 'auto'], default='auto')
     parser.add_argument('--devices', type=str, default='auto')
 
     # Push Pull Convolutional Unit Params
