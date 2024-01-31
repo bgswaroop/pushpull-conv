@@ -44,7 +44,7 @@ class BaseNet(pl.LightningModule):
         y_hat = self(x)
         loss = self.loss(y_hat, y)
         if stage in {'train', 'val', 'test'}:
-            self.log('loss', {stage: loss}, on_epoch=True, on_step=False, add_dataloader_idx=False, sync_dist=True)
+            self.log('loss', {stage: loss}, on_epoch=True, on_step=False, add_dataloader_idx=False, rank_zero_only=True)
         hash_code = torch.sign(y_hat)
         return hash_code, y, loss
 
@@ -58,9 +58,9 @@ class BaseNet(pl.LightningModule):
         query_score = compute_map_score(database_hash, database_gt, query_hash, query_gt, self.device)
 
         for key in query_score.keys():
-            self.log(f'{key}_mAP', {stage: query_score[key]}, add_dataloader_idx=False, sync_dist=True)
+            self.log(f'{key}_mAP', {stage: query_score[key]}, add_dataloader_idx=False, rank_zero_only=True)
             if key in {'top50', 'top200'} and stage == 'val':
-                self.log(f'{key}_mAP_{stage}', query_score[key], logger=False, add_dataloader_idx=False, sync_dist=True)
+                self.log(f'{key}_mAP_{stage}', query_score[key], logger=False, add_dataloader_idx=False, rank_zero_only=True)
 
     def training_step(self, batch, batch_idx):
         hash_code, y, loss = self.evaluate_step(batch, batch_idx, stage='train')
@@ -70,7 +70,7 @@ class BaseNet(pl.LightningModule):
         stage = ['val', 'database'][dataloader_idx]
         hash_code, y, loss = self.evaluate_step(batch, batch_idx, stage=stage)
         if stage == 'val':
-            self.log(f'loss_{stage}', loss, add_dataloader_idx=False, logger=False, sync_dist=True)
+            self.log(f'loss_{stage}', loss, add_dataloader_idx=False, logger=False, rank_zero_only=True)
         return {f'{stage}': {'predictions': hash_code, 'ground_truths': y}}
 
     # def validation_epoch_end(self, outputs) -> None:

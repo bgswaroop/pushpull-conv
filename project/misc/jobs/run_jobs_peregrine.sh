@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=train_in100
-#SBATCH --time=2:00:00
-#SBATCH --mem=60g
-#SBATCH --gpus-per-node=1
+#SBATCH --job-name=PP+trivial_aug
+#SBATCH --time=48:00:00
+#SBATCH --mem=120g
+#SBATCH --gpus-per-node=a100:1
 #SBATCH --cpus-per-task=12
 
 # SLURM Notation used above
@@ -33,42 +33,52 @@ module load Python/3.11.3-GCCcore-12.3.0
 
 which python
 source "$HOME/.virtualenvs/pushpull-conv/bin/activate"
-
 module list
 which python
 
+SECONDS=0;
+echo "extacting files from imagenet and imagenet-c"
 tar -xf /scratch/p288722/data/imagenet.tar -C "$TMPDIR" --warning=no-unknown-keyword
 tar -xf /scratch/p288722/data/imagenet-c.tar -C "$TMPDIR" --warning=no-unknown-keyword
-SECONDS=0;
-echo deleting unwanted files from imagenet
+echo "deleting unwanted files from imagenet"
 find "$TMPDIR/imagenet" -name ".*" -delete
-echo Time taken to delete $SECONDS sec
-SECONDS=0;
-echo deleting unwanted files from imagenet-c
+echo "deleting unwanted files from imagenet-c"
 find "$TMPDIR/imagenet-c" -name ".*" -delete
-echo Time taken to delete $SECONDS sec
+echo "Time taken to extract & delete unnecessary files ${SECONDS} sec"
 
-#rm /tmp/imagenet/val/n01514668/._ILSVRC2012_val_00000329.JPEG
-#rm /tmp/imagenet/val/n01514668/._ILSVRC2012_val_00000911.JPEG
 
 train_script="$HOME/git_code/pushpull-conv/project/train_flow.py"
 logs_dir="/scratch/p288722/runtime_data/pushpull-conv"
 task="classification"
-dataset_name="imagenet100"
+dataset_name="imagenet"
 dataset_dir="$TMPDIR/imagenet"
 corrupted_dataset_dir="$TMPDIR/imagenet-c"
-corrupted_dataset_name="imagenet100-c"
+corrupted_dataset_name="imagenet-c"
 model="resnet50"
 experiment_name="${model}_${dataset_name}_${task}"
-common_train_args="--accelerator gpu --img_size 224 --model ${model} --hash_length 64 --quantization_weight 1e-4 --num_workers 12 --batch_size 64 --max_epochs 50 --weight_decay 5e-5 --lr_base 5e-2 --task ${task} --logs_dir ${logs_dir} --experiment_name ${experiment_name} --dataset_dir ${dataset_dir} --dataset_name ${dataset_name}"
+common_train_args="--accelerator gpu --img_size 224 --model ${model} --hash_length 64 --quantization_weight 1e-4 --num_workers 12 --batch_size 64 --max_epochs 20 --weight_decay 5e-5 --lr_base 5e-2 --task ${task} --logs_dir ${logs_dir} --experiment_name ${experiment_name} --dataset_dir ${dataset_dir} --dataset_name ${dataset_name}"
 base_dir="$logs_dir/$experiment_name"
 predict_script="$HOME/git_code/pushpull-conv/project/predict_flow.py"
 corruption_types="gaussian_noise shot_noise impulse_noise defocus_blur glass_blur  motion_blur zoom_blur snow frost fog brightness contrast elastic_transform pixelate jpeg_compression"
-baseline_model_logs_dir="$base_dir/${model}"
+baseline_model_logs_dir="$base_dir/${model}_TrivialAugment"
 common_predict_args="--accelerator gpu --img_size 224 --model ${model} --num_workers 12 --corruption_types $corruption_types --task ${task} --dataset_dir ${dataset_dir} --dataset_name ${dataset_name} --corrupted_dataset_dir ${corrupted_dataset_dir} --corrupted_dataset_name ${corrupted_dataset_name}"
 
-echo python ${train_script} --avg_kernel_size 3 --pull_inhibition_strength 1 --logs_version 2 ${common_train_args}
-python ${train_script} --avg_kernel_size 3 --pull_inhibition_strength 1 --logs_version 2 ${common_train_args}
+# --avg_kernel_size 3 --trainable_pull_inhibition
+
+#ver=1
+#echo python ${train_script} --no-use_push_pull --logs_version $ver --augmentation TrivialAugment ${common_train_args}
+#export CUDA_LAUNCH_BLOCKING=1 python ${train_script} --no-use_push_pull --logs_version $ver --augmentation TrivialAugment ${common_train_args}
+#mv "${base_dir}/version_${ver}" "$base_dir/${model}_TrivialAugment"
+#export CUDA_LAUNCH_BLOCKING=1 echo python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_TrivialAugment" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir}
+#python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_TrivialAugment" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir}
+
+ver=2
+echo python ${train_script} --avg_kernel_size 3 --trainable_pull_inhibition --logs_version $ver --augmentation TrivialAugment ${common_train_args}
+export CUDA_LAUNCH_BLOCKING=1 python ${train_script} --avg_kernel_size 3 --trainable_pull_inhibition --logs_version $ver --augmentation TrivialAugment ${common_train_args}
+mv "${base_dir}/version_${ver}" "$base_dir/${model}_TrivialAugment_avg3"
+export CUDA_LAUNCH_BLOCKING=1 echo python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_TrivialAugment_avg3" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir}
+python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_TrivialAugment_avg3" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir}
+
 
 #
 # case ${SLURM_ARRAY_TASK_ID} in

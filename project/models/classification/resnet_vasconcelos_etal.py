@@ -6,6 +6,7 @@ from antialiased_cnns import BlurPool
 from torch import Tensor
 
 from .base_net import BaseNet
+from ..utils.push_pull_unit import PushPullConv2DUnit
 
 
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
@@ -165,8 +166,18 @@ class ResNet(BaseNet):
         self.groups = groups
         self.base_width = width_per_group
 
-        self.conv1 = nn.Sequential(nn.Conv2d(3, self.in_planes, kernel_size=7, stride=1, padding=3, bias=False),
-                                   BlurPool(self.in_planes, filt_size=antialiasing_filter_size, stride=2, ))
+        if args.use_push_pull and args.num_push_pull_layers >= 1:
+            self.conv1 = nn.Sequential(PushPullConv2DUnit(in_channels=3, out_channels=self.in_planes,
+                                                          kernel_size=(7, 7),
+                                                          avg_kernel_size=args.avg_kernel_size,
+                                                          pull_inhibition_strength=args.pull_inhibition_strength,
+                                                          trainable_pull_inhibition=args.trainable_pull_inhibition,
+                                                          stride=1, padding=3, bias=False),
+                                       BlurPool(self.in_planes, filt_size=antialiasing_filter_size, stride=2, ))
+        else:
+            self.conv1 = nn.Sequential(nn.Conv2d(3, self.in_planes, kernel_size=7, stride=1, padding=3, bias=False),
+                                       BlurPool(self.in_planes, filt_size=antialiasing_filter_size, stride=2, ))
+
         self.bn1 = norm_layer(self.in_planes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.Sequential(nn.MaxPool2d(kernel_size=2, stride=1),

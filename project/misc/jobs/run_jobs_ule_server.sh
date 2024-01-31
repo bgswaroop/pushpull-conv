@@ -9,7 +9,7 @@ task="classification"
 
 dataset_name="imagenet"
 dataset_dir="${DATA_HOME}/datasets/imagenet"
-corrupted_dataset_dir="${DATA_HOME}/datasets/imagenet/imagenet-c"
+corrupted_dataset_dir="${DATA_HOME}/datasets/imagenet-c"
 corrupted_dataset_name="imagenet-c"
 
 #dataset_name="cifar10"
@@ -17,8 +17,8 @@ corrupted_dataset_name="imagenet-c"
 #corrupted_dataset_dir="${DATA_HOME}/datasets/cifar/cifar10-c"
 #corrupted_dataset_name="cifar10-c"
 
-model="strisciuglio_resnet50"
-experiment_name="sota_resnet50_${dataset_name}_${task}"
+model="resnet50"
+experiment_name="aug_resnet50_${dataset_name}_${task}"
 common_train_args="--accelerator gpu --img_size 224 --model ${model} --hash_length 64 --quantization_weight 1e-4 --num_workers 12 --task ${task} --logs_dir ${logs_dir} --experiment_name ${experiment_name} --dataset_dir ${dataset_dir} --dataset_name ${dataset_name}"
 base_dir="$logs_dir/$experiment_name"
 predict_script="$HOME/git_code/pushpull-conv/project/predict_flow.py"
@@ -31,18 +31,21 @@ common_predict_args="--accelerator gpu --img_size 224 --model ${model} --num_wor
 #mkdir -p "${base_dir}/version_${i}"
 #nohup python ${train_script} --avg_kernel_size 0 --pull_inhibition_strength 1 --logs_version ${i} ${common_train_args}  --devices "$((i%2))," > "${base_dir}/version_${i}/logs_train.out" 2>&1 &
 #
-#i=1
-#mkdir -p "${base_dir}/version_${i}"
-#nohup python ${train_script} --augmentation AutoAug --no-use_push_pull --logs_version ${i} ${common_train_args}  --devices "$((i%2))," > "${base_dir}/version_${i}/logs_train.out" 2>&1 &
+i=0
+mkdir -p "${base_dir}/version_${i}"
+python ${train_script} --augmentation TrivialAugment --no-use_push_pull --logs_version ${i} ${common_train_args}  --devices "$((i%2))," > "${base_dir}/version_${i}/logs_train.out" 2>&1 &
+
+
+nohup python ${train_script} --augmentation TrivialAugment --no-use_push_pull --logs_version ${i} ${common_train_args}  --devices "$((i%2))," > "${base_dir}/version_${i}/logs_train.out" 2>&1 &
 #
 #i=2
 #mkdir -p "${base_dir}/version_${i}"
 #nohup python ${train_script} --augmentation RandAug --no-use_push_pull --logs_version ${i} ${common_train_args}  --devices "$((i%2))," > "${base_dir}/version_${i}/logs_train.out" 2>&1 &
 
 
-#i=1
-#mkdir -p "${base_dir}/version_${i}"
-#nohup python ${train_script} --no-use_push_pull --logs_version ${i} ${common_train_args}  --devices "$((i%2)),"  > "${base_dir}/version_${i}/logs_train.out" 2>&1 &
+i=1
+mkdir -p "${base_dir}/version_${i}"
+nohup python ${train_script} --augmentation TrivialAugment --trainable_pull_inhibition --avg_kernel_size 3 --logs_version ${i} ${common_train_args}  --devices "$((i%2)),"  > "${base_dir}/version_${i}/logs_train.out" 2>&1 &
 
 #args.lr_initial = 5e-3
 #args.lr_max = 0.2

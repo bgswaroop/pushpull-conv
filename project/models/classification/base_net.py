@@ -14,9 +14,9 @@ class BaseNet(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, acc1, acc5 = self.evaluate(batch, stage='train', batch_idx=batch_idx)
-        self.log('train_loss', loss, sync_dist=True)
-        self.log('train_top1-accuracy', acc1, on_epoch=True, on_step=True, sync_dist=True)
-        self.log('train_top5-accuracy', acc5, on_epoch=True, on_step=True, sync_dist=True)
+        self.log('train_loss', loss, rank_zero_only=True)
+        self.log('train_top1-accuracy', acc1, on_epoch=True, on_step=True, rank_zero_only=True)
+        self.log('train_top5-accuracy', acc5, on_epoch=True, on_step=True, rank_zero_only=True)
         return loss
 
     # def training_epoch_end(self, outputs: EPOCH_OUTPUT) -> None:
@@ -77,15 +77,15 @@ class BaseNet(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx, dataloader_idx: int = 0):
         loss, acc1, acc5 = self.evaluate(batch, stage='val', batch_idx=batch_idx)
-        self.log('val_loss', loss, add_dataloader_idx=False, on_epoch=True, sync_dist=True)
-        self.log('val_top1_acc', acc1, add_dataloader_idx=False, on_epoch=True, sync_dist=True)
-        self.log('val_top5_acc', acc5, add_dataloader_idx=False, on_epoch=True, sync_dist=True)
+        self.log('val_loss', loss, add_dataloader_idx=False, on_epoch=True, rank_zero_only=True)
+        self.log('val_top1_acc', acc1, add_dataloader_idx=False, on_epoch=True, rank_zero_only=True)
+        self.log('val_top5_acc', acc5, add_dataloader_idx=False, on_epoch=True, rank_zero_only=True)
         return loss
 
     def test_step(self, batch, batch_idx):
         loss, acc1, acc5 = self.evaluate(batch, stage='test')
-        self.log('test_top1_acc', acc1, on_epoch=True, sync_dist=True)
-        self.log('test_top5_acc', acc5, on_epoch=True, sync_dist=True)
+        self.log('test_top1_acc', acc1, on_epoch=True, rank_zero_only=True)
+        self.log('test_top5_acc', acc5, on_epoch=True, rank_zero_only=True)
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         x, y, y_soft = batch

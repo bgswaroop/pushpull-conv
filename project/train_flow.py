@@ -42,13 +42,14 @@ def parse_args():
                              'loaded in the main process. (default: ``2``)')
     parser.add_argument('--logs_version', default=None, type=int)
     parser.add_argument('--accelerator', type=str, choices=['cpu', 'gpu', 'auto'])
+    parser.add_argument('--devices', type=str, default='auto')
 
     # Push Pull Convolutional Unit Params
     parser.add_argument('--use_push_pull', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--num_push_pull_layers', type=int, default=1)
     parser.add_argument('--avg_kernel_size', type=int, default=None, help='Size of the avg filter (int)')
     parser.add_argument('--pull_inhibition_strength', type=float, default=1.0)
-    parser.add_argument('--trainable_pull_inhibition', type=bool, default=True)
+    parser.add_argument('--trainable_pull_inhibition', action=argparse.BooleanOptionalAction, default=True)
 
     parser.add_argument('--training_type', default='teacher', type=str, choices=['teacher', 'student'])
     parser.add_argument('--teacher_ckpt', type=str, default=None, help='ckpt to determine soft-targets for the student')
@@ -62,7 +63,7 @@ def parse_args():
     parser.add_argument('--weight_decay', type=float, default=1e-4)  # regularization
     parser.add_argument('--hash_length', type=int, default=64)
     parser.add_argument('--quantization_weight', type=float, default=1e-4)
-    parser.add_argument('--augmentation', default='none', type=str, choices=['AugMix', 'AutoAug', 'RandAug', 'none'])
+    parser.add_argument('--augmentation', default='none', type=str, choices=['AugMix', 'AutoAug', 'RandAug', 'none', 'TrivialAugment'])
 
     # parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
@@ -73,8 +74,12 @@ def parse_args():
     if args.use_push_pull:
         assert args.avg_kernel_size is not None, "Invalid config: use_push_pull=True but avg_kernel_size is not set!"
 
+    if args.ckpt:
+        args.ckpt = Path(args.ckpt).resolve()
+
     if args.training_type == 'student':
         assert args.teacher_ckpt is not None, 'Invalid config: teacher_ckpt is not set when training_type="student"'
+        args.teacher_ckpt = args.teacher_ckpt.resolve()
         assert Path(args.teacher_ckpt).exists(), 'teacher_ckpt does not exists!'
         args.loss_type = 'distillation_loss'
     else:
@@ -201,8 +206,9 @@ def train_on_clean_images(args, ray_tune=False):
     callbacks.extend([lr_monitor_callback, progress_bar_callback])
     # callbacks = callbacks + [tune_callback] if ray_tune else callbacks
 
-    trainer = pl.Trainer(accelerator=args.accelerator, max_epochs=args.max_epochs, logger=logger, callbacks=callbacks,
-                         strategy=DDPStrategy(find_unused_parameters=False), fast_dev_run=False)
+    trainer = pl.Trainer(accelerator=args.accelerator, max_epochs=args.max_epochs, logger=logger,
+                         callbacks=callbacks, devices=args.devices)  # ,
+    # strategy=DDPStrategy(find_unused_parameters=False), fast_dev_run=False)
 
     if args.task == 'classification':
         trainer.fit(model, train_loader, ckpt_path=args.ckpt, val_dataloaders=[val_loader])

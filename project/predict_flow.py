@@ -69,7 +69,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--img_size', default=224, type=int, choices=[32, 224])
     parser.add_argument('--batch_size', default=128, type=int)
-    parser.add_argument('--dataset_dir', default=r'/data/p288722/datasets/cifar', type=str)
+    parser.add_argument('--dataset_dir', default=None, type=str)
     parser.add_argument('--dataset_name', default='imagenet',
                         help="'cifar10', 'imagenet100', 'imagenet200', 'imagenet'"
                              "or add a suffix '_20pc' for a 20 percent stratified training subset."
@@ -80,10 +80,12 @@ def parse_args():
                         choices=['CIFAR-10-C-EnhancedSeverity', 'CIFAR-10-C-224x224', 'cifar10-c',
                                  'imagenet-c', 'imagenet100-c', 'imagenet200-c'])
 
+    parser.add_argument('--accelerator', type=str, choices=['cpu', 'gpu', 'auto'])
     parser.add_argument('--num_workers', default=2, type=int,
                         help='how many subprocesses to use for data loading. ``0`` means that the data will be '
                              'loaded in the main process. (default: ``2``)')
     parser.add_argument('--predict_model_logs_dir', type=str, required=True)
+    parser.add_argument('--model', default='resnet18', type=str)
     parser.add_argument('--baseline_model_logs_dir', type=str, default=None)
     parser.add_argument('--corruption_types', nargs='*', default=None, type=str,
                         choices=['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
@@ -92,19 +94,23 @@ def parse_args():
                                  'speckle_noise', 'gaussian_blur', 'spatter', 'saturate'])
     parser.add_argument('--use_push_pull', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--num_push_pull_layers', type=int, default=1)
-    parser.add_argument('--model', default='AlexNet', type=str, required=True)
     parser.add_argument('--task', default='classification', type=str, required=False,
                         choices=['classification', 'retrieval'])
 
-    parser = pl.Trainer.add_argparse_args(parser)
+    # parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
+    # args, unknown = parser.parse_known_args()
+    # print(args)
+    # print('\n\n\n')
+    # print(unknown)
 
     args.num_severities = 5
 
     assert Path(args.dataset_dir).exists(), f'{args.dataset_dir} does not exists!'
     assert Path(args.corrupted_dataset_dir).exists(), f'{args.corrupted_dataset_dir} does not exists!'
 
-    args.model_ckpt = Path(args.predict_model_logs_dir).joinpath('checkpoints/last.ckpt')
+    args.model_ckpt = Path(args.predict_model_logs_dir).joinpath('checkpoints/last.ckpt').resolve()
+    args.model_ckpt = Path(args.predict_model_logs_dir).joinpath(f'checkpoints/{args.model_ckpt.name}')
     assert args.model_ckpt.exists(), f'{args.model_ckpt} does not exists!'
     args.results_file = Path(args.predict_model_logs_dir).joinpath('results/all_scores.json')
     args.results_file.parent.mkdir(exist_ok=True, parents=True)
@@ -147,14 +153,12 @@ def predict_with_noise():
 
     # Mapping the weights to the corresponding ones as per the ResNet names in this implementation
     state_dict = {k.removeprefix('module.'): v for k, v in state_dict.items()}
-    state_dict = {k.replace('bn1.', 'bn.') if k.startswith('bn1.') else k: v for k, v in state_dict.items()}
+    # state_dict = {k.replace('bn1.', 'bn.') if k.startswith('bn1.') else k: v for k, v in state_dict.items()}
     state_dict = {k.replace('fc.', 'classifier.') if k.startswith('fc.') else k: v for k, v in state_dict.items()}
 
     model.load_state_dict(state_dict)
-
-    trainer = pl.Trainer.from_argparse_args(args)
+    trainer = pl.Trainer(accelerator=args.accelerator, fast_dev_run=False)
     device = trainer.strategy.root_device  # torch.device(f'cuda:{trainer.device_ids[0]}')
-
     clean_dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
 
     if args.task == 'retrieval':
@@ -190,7 +194,8 @@ def predict_with_noise():
     if args.task == 'classification':
         scores['clean']['top1'] = float(accuracy(test_predictions, test_ground_truths, top_k=1))
         scores['clean']['top5'] = float(accuracy(test_predictions, test_ground_truths, top_k=5))
-        top1_classwise_accuracy = ClasswiseWrapper(Accuracy(top_k=1, num_classes=num_classes, average=None), labels)
+        top1_classwise_accuracy = ClasswiseWrapper(
+            Accuracy(task='multiclass', top_k=1, num_classes=num_classes, average=None), labels)
         output = top1_classwise_accuracy(test_predictions, test_ground_truths)
         classwise_index = sorted(output.keys())
         classwise_scores['Clean'] = [float(output[x].item()) for x in classwise_index]

@@ -54,3 +54,7 @@ def get_augmentation(augmentation, dataset_name):
         return torchvision.transforms.AutoAugment(policy)
     elif augmentation == 'RandAug':
         return torchvision.transforms.RandAugment()
+    elif augmentation == 'TrivialAugment':
+        return torchvision.transforms.TrivialAugmentWide()
+    else:
+        raise ValueError('Invalid augmentation')

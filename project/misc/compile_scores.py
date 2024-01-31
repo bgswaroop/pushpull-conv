@@ -103,20 +103,21 @@ def plot_scores(experiments, all_scores, dataset_name, compile_scores_dir):
     plt.tight_layout()
     plt.savefig(compile_scores_dir.joinpath('top1_scores_vs_severity.png'))
 
+
 def run_flow():
-    compile_scores_dir = Path(r'/home/guru/runtime_data/pushpull-conv/dev_data_aug_imagenet')
+    compile_scores_dir = Path(r'/scratch/p288722/runtime_data/pushpull-conv/vasconcelos_resnet50_imagenet_classification')
     dataset_name = 'imagenet-c'
-    baseline_exp_dir = '/home/guru/runtime_data/pushpull-conv/dev_data_aug_imagenet/resnet50'
+    baseline_exp_dir = '/scratch/p288722/runtime_data/pushpull-conv/vasconcelos_resnet50_imagenet_classification/vasconcelos_resnet50_avg3'
     experiments = [
         # 'strisciuglio_resnet50_inh_trainable',
-        # 'vasconcelos_resnet50',
+        'vasconcelos_resnet50_avg3',
         # 'zhang_resnet50',
-        'resnet50',
-        'resnet50_avg3',
-        'resnet50_avg5',
-        'resnet50_augmix',
-        'resnet50_augmix_avg3',
-        'resnet50_augmix_avg5',
+        # 'resnet50_AutoAug',
+        # 'resnet50_AutoAug_avg3',
+        # 'resnet50_avg5',
+        # 'resnet50_augmix',
+        # 'resnet50_augmix_avg3',
+        # 'resnet50_augmix_avg5',
         # 'resnet50_autoaug',
         # 'resnet50_autoaug_avg3',
         # 'resnet50_autoaug_avg5',
