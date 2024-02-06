@@ -7,16 +7,18 @@ from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor, TQ
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.strategies import DDPStrategy
 # from ray.tune.integration.lightning.pytorch import TuneReportCallback
-from tqdm import tqdm
+# from tqdm import tqdm
 
 from data import get_dataset, get_augmentation
 from models import get_classifier
 
+torch.set_float32_matmul_precision('highest')
 
-class LitProgressBar(TQDMProgressBar):
-    def init_validation_tqdm(self):
-        bar = tqdm(disable=True, )
-        return bar
+
+# class LitProgressBar(TQDMProgressBar):
+#     def init_validation_tqdm(self):
+#         bar = tqdm(disable=True, )
+#         return bar
 
 
 def parse_args():
@@ -63,7 +65,8 @@ def parse_args():
     parser.add_argument('--weight_decay', type=float, default=1e-4)  # regularization
     parser.add_argument('--hash_length', type=int, default=64)
     parser.add_argument('--quantization_weight', type=float, default=1e-4)
-    parser.add_argument('--augmentation', default='none', type=str, choices=['AugMix', 'AutoAug', 'RandAug', 'none', 'TrivialAugment'])
+    parser.add_argument('--augmentation', default='none', type=str,
+                        choices=['AugMix', 'AutoAug', 'RandAug', 'none', 'TrivialAugment'])
 
     # parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
@@ -76,6 +79,8 @@ def parse_args():
 
     if args.ckpt:
         args.ckpt = Path(args.ckpt).resolve()
+        if not args.ckpt.exists():
+            args.ckpt = None
 
     if args.training_type == 'student':
         assert args.teacher_ckpt is not None, 'Invalid config: teacher_ckpt is not set when training_type="student"'
@@ -186,14 +191,15 @@ def train_on_clean_images(args, ray_tune=False):
     # ------------
     # training
     # ------------
-    ckpt_callback1 = ModelCheckpoint(mode='min', monitor='val_loss', filename='{epoch}-{val_loss:.2f}', save_last=True)
-    callbacks = [ckpt_callback1]
+    ckpt_callback0 = ModelCheckpoint(filename='{epoch}-last', save_last=True)
+    ckpt_callback1 = ModelCheckpoint(mode='min', monitor='val_loss', filename='{epoch}-{val_loss:.2f}')
+    callbacks = [ckpt_callback0, ckpt_callback1]
     if args.task == 'classification':
         ckpt_callback2 = ModelCheckpoint(mode='max', monitor='val_top1_acc', filename='{epoch}-{val_top1_acc:.2f}')
-        ckpt_callback3 = ModelCheckpoint(mode='max', monitor='val_top5_acc', filename='{epoch}-{val_top5_acc:.2f}')
+        # ckpt_callback3 = ModelCheckpoint(mode='max', monitor='val_top5_acc', filename='{epoch}-{val_top5_acc:.2f}')
         # tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
         #                                             "top5_acc_val": "top5_acc_val"}, on="validation_end")
-        callbacks.extend([ckpt_callback2, ckpt_callback3])
+        callbacks.extend([ckpt_callback2,])
     elif args.task == 'retrieval':
         ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
         ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')
@@ -201,7 +207,7 @@ def train_on_clean_images(args, ray_tune=False):
     else:
         raise ValueError('Invalid task!')
     lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
-    progress_bar_callback = LitProgressBar(refresh_rate=200)
+    progress_bar_callback = TQDMProgressBar(refresh_rate=200)
 
     callbacks.extend([lr_monitor_callback, progress_bar_callback])
     # callbacks = callbacks + [tune_callback] if ray_tune else callbacks

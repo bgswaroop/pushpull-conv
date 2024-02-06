@@ -282,6 +282,7 @@ class _ImageNetBase(Dataset):
         self.labels_num_to_txt = {num: text for text, num in self.labels_txt_to_num.items()}
 
         self.length = len(self.labels)
+        print(f'debug: Number of labels: {self.length}\n')
 
     def _filter_to_subset_classes(self, ):
         assert self.num_classes in {100, 200}, 'Invalid number of subset classes!'
@@ -352,20 +353,32 @@ class ImageNet:
     def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
         self.dataset = _ImageNetBase(self.root, 'train', self.img_size, self.num_classes, self.train_set_fraction,
                                      self.augment)
-        train_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
-                                  prefetch_factor=16, pin_memory=True, persistent_workers=True)
+        prefetch_factor = 16 if num_workers > 0 else None
+        persistent_workers = True if num_workers > 0 else False
+        timeout = 600 if num_workers > 0 else 0
+        train_loader = DataLoader(self.dataset, batch_size, shuffle, num_workers=num_workers, timeout=timeout,
+                                  prefetch_factor=prefetch_factor, pin_memory=False,
+                                  persistent_workers=persistent_workers)
         return train_loader
 
     def get_validation_dataloader(self, batch_size=None, num_workers=None, shuffle=False):
         self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.num_classes)
-        val_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
-                                prefetch_factor=16, pin_memory=True, persistent_workers=True)
+        prefetch_factor = 16 if num_workers > 0 else None
+        persistent_workers = True if num_workers > 0 else False
+        timeout = 600 if num_workers > 0 else 0
+        val_loader = DataLoader(self.dataset, batch_size, shuffle, num_workers=num_workers, timeout=timeout,
+                                prefetch_factor=prefetch_factor, pin_memory=True,
+                                persistent_workers=persistent_workers)
         return val_loader
 
     def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
         self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.num_classes)
-        test_loader = DataLoader(self.dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
-                                 prefetch_factor=16, pin_memory=True, persistent_workers=True)
+        prefetch_factor = 16 if num_workers > 0 else None
+        persistent_workers = True if num_workers > 0 else False
+        timeout = 600 if num_workers > 0 else 0
+        test_loader = DataLoader(self.dataset, batch_size, shuffle, num_workers=num_workers, timeout=timeout,
+                                 prefetch_factor=prefetch_factor, pin_memory=True,
+                                 persistent_workers=persistent_workers)
         return test_loader
 
     def get_num_classes(self):

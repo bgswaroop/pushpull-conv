@@ -1,3 +1,4 @@
+import math
 from typing import Union
 
 import numpy as np
@@ -62,7 +63,8 @@ class PushPullConv2DUnit(torch.nn.Module):
             self.avg = torch.nn.AvgPool2d(
                 kernel_size=avg_kernel_size,
                 stride=1,
-                padding=tuple([int((x - 1) / 2) for x in _pair(avg_kernel_size)])
+                padding=tuple([int((x - 1) / 2) for x in _pair(avg_kernel_size)]),
+                count_include_pad=False
             )
         else:
             self.avg = None
@@ -88,7 +90,36 @@ class PushPullConv2DUnit(torch.nn.Module):
 
     def forward(self, x):
         push_kernel = self.push_conv.weight
-        min_push = torch.amin(push_kernel, dim=(2, 3), keepdim=True)  # why amin?
+        push_min = torch.amin(push_kernel, dim=(2, 3), keepdim=True)
+        push_max = torch.amax(push_kernel, dim=(2, 3), keepdim=True)
+        pull_kernel = -push_kernel + (push_max + push_min)
+        push_sum = torch.sum(push_kernel, dim=(1, 2, 3), keepdims=True)
+        pull_sum = torch.sum(pull_kernel, dim=(1, 2, 3), keepdims=True)
+
+        pull_kernel = pull_kernel / torch.abs(pull_sum) * torch.abs(push_sum)
+        inhibition_sign = torch.sign(push_sum / pull_sum)
+
+        push_response = self.push_conv(x)
+        pull_response = F.conv2d(x, pull_kernel, None, self.stride, self.padding, self.dilation, self.groups)
+
+        if self.avg:
+            pull_response = self.avg(pull_response)
+        # push_response = F.relu_(push_response)
+        # pull_response = F.relu_(pull_response)
+
+        if not self.trainable_pull_inhibition:
+            x_out = push_response - pull_response * self.pull_inhibition_strength * inhibition_sign
+        else:
+            x_out = push_response - pull_response * self.pull_inhibition_strength.view((1, -1, 1, 1))
+
+        if self.bias is not None:
+            x_out = x_out + self.bias.view((1, -1, 1, 1))
+
+        return x_out
+
+    def forward_dev(self, x):
+        push_kernel = self.push_conv.weight
+        min_push = torch.amin(push_kernel, dim=(2, 3), keepdim=True)
         max_push = torch.amax(push_kernel, dim=(2, 3), keepdim=True)
         pull_kernel = -push_kernel + (max_push + min_push)
         push_sum = torch.sum(push_kernel, dim=(2, 3), keepdims=True)
@@ -103,6 +134,7 @@ class PushPullConv2DUnit(torch.nn.Module):
 
         push_response = F.relu_(push_response)
         pull_response = F.relu_(pull_response)
+
         x_out = push_response - pull_response
 
         if self.bias is not None:

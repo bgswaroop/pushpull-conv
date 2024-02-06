@@ -105,12 +105,20 @@ def plot_scores(experiments, all_scores, dataset_name, compile_scores_dir):
 
 
 def run_flow():
-    compile_scores_dir = Path(r'/scratch/p288722/runtime_data/pushpull-conv/vasconcelos_resnet50_imagenet_classification')
+    compile_scores_dir = Path(r'/scratch/p288722/runtime_data/pushpull-conv/resnet50_imagenet_classification')
     dataset_name = 'imagenet-c'
-    baseline_exp_dir = '/scratch/p288722/runtime_data/pushpull-conv/vasconcelos_resnet50_imagenet_classification/vasconcelos_resnet50_avg3'
+    baseline_exp_dir = '/scratch/p288722/runtime_data/pushpull-conv/resnet50_imagenet_classification/resnet50'
     experiments = [
+        'resnet50',
+        # 'resnet50_avg0',
+        # 'resnet50_avg3',
+        # 'resnet50_avg5',
+        # 'resnet50_inht_avg0',
+        # 'resnet50_inht_avg3',
+        'resnet50_inht_avg5',
+        
         # 'strisciuglio_resnet50_inh_trainable',
-        'vasconcelos_resnet50_avg3',
+        # 'vasconcelos_resnet50_avg3',
         # 'zhang_resnet50',
         # 'resnet50_AutoAug',
         # 'resnet50_AutoAug_avg3',
