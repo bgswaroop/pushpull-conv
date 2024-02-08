@@ -64,7 +64,7 @@ def run_flow():
     args = parse_args()
 
     # load data
-    dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
+    dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size, grayscale=args.use_grayscale)
     train_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers)
     val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers)
     args.num_classes = dataset.get_num_classes()

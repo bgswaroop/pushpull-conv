@@ -74,6 +74,7 @@ def parse_args():
                         help="'cifar10', 'imagenet100', 'imagenet200', 'imagenet'"
                              "or add a suffix '_20pc' for a 20 percent stratified training subset."
                              "'_20pc' is an example, can be any float [1.0, 99.0]")
+    parser.add_argument('--use-grayscale', action=argparse.BooleanOptionalAction, default=False)
 
     parser.add_argument('--corrupted_dataset_dir', default=r'/data/p288722/datasets/cifar/CIFAR-10-C-224x224', type=str)
     parser.add_argument('--corrupted_dataset_name', default='CIFAR-10-C-224x224',
@@ -159,7 +160,8 @@ def predict_with_noise():
     model.load_state_dict(state_dict)
     trainer = pl.Trainer(accelerator=args.accelerator, fast_dev_run=False)
     device = trainer.strategy.root_device  # torch.device(f'cuda:{trainer.device_ids[0]}')
-    clean_dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size)
+    clean_dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size,
+                                grayscale=args.use_grayscale)
 
     if args.task == 'retrieval':
         train_loader = clean_dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
@@ -204,7 +206,8 @@ def predict_with_noise():
                                             test_predictions, test_ground_truths,
                                             device, return_as_float=True)
 
-    dataset = get_dataset(args.corrupted_dataset_name, args.corrupted_dataset_dir, args.num_severities)
+    dataset = get_dataset(args.corrupted_dataset_name, args.corrupted_dataset_dir, args.num_severities,
+                          grayscale=args.use_grayscale)
     corruption_types = args.corruption_types if args.corruption_types else dataset.test_corruption_types
 
     for corruption_type in corruption_types:

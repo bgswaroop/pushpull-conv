@@ -34,6 +34,7 @@ def parse_args():
                              "Note - suffix is valid only for ImageNet variants")
     parser.add_argument('--ckpt', type=str, default=None, help='ckpt for the model to be trained based on '
                                                                '"training_type". Training to continue from this state.')
+    parser.add_argument('--use-grayscale', action=argparse.BooleanOptionalAction, default=False)
 
     # Pytorch lightning args
     parser.add_argument('--logs_dir', required=True, type=str,
@@ -160,7 +161,7 @@ def train_on_clean_images(args, ray_tune=False):
     # ------------
     # data
     # ------------
-    dataset = get_dataset(args.dataset_name, args.dataset_dir, args.augmentation, img_size=args.img_size)
+    dataset = get_dataset(args.dataset_name, args.dataset_dir, args.augmentation, args.img_size, args.use_grayscale)
     train_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=True)
     val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=False)
     args.num_classes = dataset.get_num_classes()

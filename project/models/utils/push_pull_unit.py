@@ -11,15 +11,15 @@ from torch.nn.common_types import _size_2_t
 from torch.nn.modules.utils import _pair
 
 
-def gauss_kernel(l=5, sig=1.):
-    """\
-    credits: https://stackoverflow.com/a/43346070/2709971
-    creates gaussian kernel with side length `l` and a sigma of `sig`
-    """
-    ax = np.linspace(-(l - 1) / 2., (l - 1) / 2., l)
-    gauss = np.exp(-0.5 * np.square(ax) / np.square(sig))
-    kernel = np.outer(gauss, gauss)
-    return kernel / np.sum(kernel)
+# def gauss_kernel(l=5, sig=1.):
+#     """\
+#     credits: https://stackoverflow.com/a/43346070/2709971
+#     creates gaussian kernel with side length `l` and a sigma of `sig`
+#     """
+#     ax = np.linspace(-(l - 1) / 2., (l - 1) / 2., l)
+#     gauss = np.exp(-0.5 * np.square(ax) / np.square(sig))
+#     kernel = np.outer(gauss, gauss)
+#     return kernel / np.sum(kernel)
 
 
 class PushPullConv2DUnit(torch.nn.Module):
@@ -69,10 +69,10 @@ class PushPullConv2DUnit(torch.nn.Module):
         else:
             self.avg = None
 
-        pooling = gauss_kernel(kernel_size[0], sig=0.25)
-        pooling = pooling / np.max(pooling)
-        pooling = 1 - pooling
-        self.pooling = torch.tensor(pooling, device=device, dtype=dtype)
+        # pooling = gauss_kernel(kernel_size[0], sig=0.25)
+        # pooling = pooling / np.max(pooling)
+        # pooling = 1 - pooling
+        # self.pooling = torch.tensor(pooling, device=device, dtype=dtype)
 
         if bias:
             self.bias = torch.nn.Parameter(torch.empty(out_channels, device=device, dtype=dtype))
@@ -108,7 +108,7 @@ class PushPullConv2DUnit(torch.nn.Module):
         # pull_response = F.relu_(pull_response)
 
         if not self.trainable_pull_inhibition:
-            x_out = push_response - pull_response * self.pull_inhibition_strength * inhibition_sign
+            x_out = push_response - pull_response * self.pull_inhibition_strength * inhibition_sign.view(1, -1, 1, 1)
         else:
             x_out = push_response - pull_response * self.pull_inhibition_strength.view((1, -1, 1, 1))
 
@@ -191,19 +191,19 @@ class PushPullConv2DUnit(torch.nn.Module):
 
         return x_out
 
-    def get_pull_kernel(self, push_kernel, pull_kernel):
-        #     function pull_kernel = getPullKernel(push_kernel, sd)
-        #     pull_kernel = -push_kernel + max(push_kernel(:)) + min(push_kernel(:));
-        #     pooling = fspecial('gaussian', size(pull_kernel), sd);
-        #     pooling = pooling / max(pooling(:));
-        #     pooling = 1 - pooling;
-        #     pull_kernel = ifft2(ifftshift(fftshift(fft2(pull_kernel)). * pooling));
-
-        d = (-2, -1)  # last two dimensions
-        pull = fftshift(fft2(pull_kernel, dim=d), dim=d)
-        pull = pull * self.pooling.to(pull.device)
-        pull = torch.real(ifft2(ifftshift(pull, dim=d), dim=d)).float()
-        return pull
+    # def get_pull_kernel(self, push_kernel, pull_kernel):
+    #     #     function pull_kernel = getPullKernel(push_kernel, sd)
+    #     #     pull_kernel = -push_kernel + max(push_kernel(:)) + min(push_kernel(:));
+    #     #     pooling = fspecial('gaussian', size(pull_kernel), sd);
+    #     #     pooling = pooling / max(pooling(:));
+    #     #     pooling = 1 - pooling;
+    #     #     pull_kernel = ifft2(ifftshift(fftshift(fft2(pull_kernel)). * pooling));
+    #
+    #     d = (-2, -1)  # last two dimensions
+    #     pull = fftshift(fft2(pull_kernel, dim=d), dim=d)
+    #     pull = pull * self.pooling.to(pull.device)
+    #     pull = torch.real(ifft2(ifftshift(pull, dim=d), dim=d)).float()
+    #     return pull
 
     # def get_pull_kernel(self, push_kernel, pull_kernel):
     #     pos = push_kernel > 0

@@ -80,6 +80,7 @@ class CIFAR10:
     def __init__(
             self,
             root: str,
+            grayscale=False,
             augment=None,
             download: bool = True,
     ) -> None:
@@ -107,6 +108,15 @@ class CIFAR10:
             transforms.ToTensor(),
             _normalize
         ])
+        if grayscale:
+            self._transform_train = transforms.Compose([
+                self._transform_train,
+                transforms.Grayscale(num_output_channels=1)
+            ])
+            self._transform_test = transforms.Compose([
+                self._transform_test,
+                transforms.Grayscale(num_output_channels=1)
+            ])
 
     def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
         dataset = _CIFAR10(self.root, True, self._transform_train, None, self.download)
@@ -129,7 +139,7 @@ class CIFAR10:
 
 
 class CIFAR10C(Dataset):
-    def __init__(self, root_dir, num_splits):
+    def __init__(self, root_dir, num_splits, grayscale=False):
         super(CIFAR10C, self).__init__()
 
         self.num_splits = num_splits
@@ -152,6 +162,8 @@ class CIFAR10C(Dataset):
         # data transform
         _normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
         self.transform = transforms.Compose([transforms.ToTensor(), _normalize])
+        if grayscale:
+            self.transform = transforms.Compose([self.transform, transforms.Grayscale(num_output_channels=1)])
 
     @property
     def corruption_type(self):
@@ -198,6 +210,7 @@ class _ImageNetBase(Dataset):
             num_classes: int,
             data_fraction: float = 1.0,
             augment=None,
+            grayscale=False
     ) -> None:
         self.root = Path(root)
         self.split = split
@@ -214,7 +227,7 @@ class _ImageNetBase(Dataset):
                 transforms.RandomCrop(img_size),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                _normalize
+                _normalize,
             ])
         else:
             self._transform_train = transforms.Compose([
@@ -230,6 +243,17 @@ class _ImageNetBase(Dataset):
             transforms.ToTensor(),
             _normalize
         ])
+
+        if grayscale:
+            self._transform_train = transforms.Compose([
+                self._transform_train,
+                transforms.Grayscale(num_output_channels=1)
+            ])
+            self._transform_test = transforms.Compose([
+                self._transform_test,
+                transforms.Grayscale(num_output_channels=1)
+            ])
+
         self.data = []
         self.labels = []
 
@@ -343,16 +367,18 @@ class _ImageNetBase(Dataset):
 
 
 class ImageNet:
-    def __init__(self, root: str, img_size: int, train_set_fraction=1.0, augment=None, num_classes=1000):
+    def __init__(self, root: str, img_size: int, train_set_fraction=1.0, augment=None, grayscale=False,
+                 num_classes=1000):
         self.root = root
         self.img_size = img_size
         self.num_classes = num_classes
         self.train_set_fraction = train_set_fraction
         self.augment = augment
+        self.grayscale = grayscale
 
     def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
         self.dataset = _ImageNetBase(self.root, 'train', self.img_size, self.num_classes, self.train_set_fraction,
-                                     self.augment)
+                                     self.augment, self.grayscale)
         prefetch_factor = 16 if num_workers > 0 else None
         persistent_workers = True if num_workers > 0 else False
         timeout = 600 if num_workers > 0 else 0
@@ -362,7 +388,7 @@ class ImageNet:
         return train_loader
 
     def get_validation_dataloader(self, batch_size=None, num_workers=None, shuffle=False):
-        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.num_classes)
+        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.num_classes, grayscale=self.grayscale)
         prefetch_factor = 16 if num_workers > 0 else None
         persistent_workers = True if num_workers > 0 else False
         timeout = 600 if num_workers > 0 else 0
@@ -372,7 +398,7 @@ class ImageNet:
         return val_loader
 
     def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
-        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.num_classes)
+        self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.num_classes, grayscale=self.grayscale)
         prefetch_factor = 16 if num_workers > 0 else None
         persistent_workers = True if num_workers > 0 else False
         timeout = 600 if num_workers > 0 else 0
@@ -386,7 +412,7 @@ class ImageNet:
 
 
 class ImageNetC:
-    def __init__(self, root_dir, use_subset=None):
+    def __init__(self, root_dir, grayscale, use_subset=None):
         super(ImageNetC, self).__init__()
 
         # full dataset
@@ -408,6 +434,11 @@ class ImageNetC:
             transforms.ToTensor(),
             _normalize
         ])
+        if grayscale:
+            self.transform = transforms.Compose([
+                self.transform,
+                transforms.Grayscale(num_output_channels=1)
+            ])
 
         self.images = []
         self.labels = []
