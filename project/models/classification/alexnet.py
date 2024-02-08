@@ -27,7 +27,7 @@ class AlexNet(BaseNet):
         )
 
     @staticmethod
-    def _alexnet_for_resnet(args):
+    def _alexnet_for_imagenet(args):
         """
         The original implementation of the AlexNet is designed to handle inputs of size 256x256
         along with PushPull inhibition
