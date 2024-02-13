@@ -161,7 +161,7 @@ def predict_with_noise():
     trainer = pl.Trainer(accelerator=args.accelerator, fast_dev_run=False)
     device = trainer.strategy.root_device  # torch.device(f'cuda:{trainer.device_ids[0]}')
     clean_dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size,
-                                grayscale=args.use_grayscale)
+                                grayscale=args.use_grayscale, model=args.model)
 
     if args.task == 'retrieval':
         train_loader = clean_dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=False)
@@ -207,7 +207,7 @@ def predict_with_noise():
                                             device, return_as_float=True)
 
     dataset = get_dataset(args.corrupted_dataset_name, args.corrupted_dataset_dir, args.num_severities,
-                          grayscale=args.use_grayscale)
+                          grayscale=args.use_grayscale, model=args.model)
     corruption_types = args.corruption_types if args.corruption_types else dataset.test_corruption_types
 
     for corruption_type in corruption_types:

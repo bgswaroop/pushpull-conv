@@ -9,7 +9,7 @@ __all__ = (
 )
 
 
-def get_dataset(dataset_name, dataset_dir, augment=None, img_size=224, grayscale=False, num_severities=5):
+def get_dataset(dataset_name, dataset_dir, augment=None, img_size=224, grayscale=False, num_severities=5, model=None):
     if 'pc' in dataset_name[-2:]:
         train_data_percent = float(dataset_name[:-2].split('_')[-1])
         assert 1.0 <= train_data_percent <= 99.0, 'data percent must be within [1, 99]'
@@ -18,10 +18,12 @@ def get_dataset(dataset_name, dataset_dir, augment=None, img_size=224, grayscale
     else:
         train_set_fraction = 1.0
 
+    resize_dims_for_cifar = 224 if model == 'AlexNet' else None
+
     if dataset_name == 'cifar10':
-        dataset = CIFAR10(dataset_dir, grayscale, augment=augment, download=True)
+        dataset = CIFAR10(dataset_dir, grayscale, augment=augment, download=True, resize=resize_dims_for_cifar)
     elif dataset_name == 'cifar10-c':
-        dataset = CIFAR10C(dataset_dir, num_severities, grayscale)
+        dataset = CIFAR10C(dataset_dir, num_severities, grayscale, resize=resize_dims_for_cifar)
     elif dataset_name == 'imagenet':
         dataset = ImageNet(dataset_dir, img_size, train_set_fraction, augment, grayscale, num_classes=1000)
     elif dataset_name == 'imagenet100':

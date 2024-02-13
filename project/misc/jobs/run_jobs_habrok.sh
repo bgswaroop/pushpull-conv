@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=an_ci10
-#SBATCH --time=1:00:00
+#SBATCH --time=0:10:00
 #SBATCH --mem=16gb
 #SBATCH --gpus-per-node=a100.20gb:1
-#SBATCH --cpus-per-task=4
-#SBATCH --array=0
+#SBATCH --cpus-per-task=3
+#SBATCH --array=3,5,6
 
 # SLURM Notation used above
 # %x - Name of the Job
@@ -41,7 +41,7 @@ train_script="$HOME/git_code/pushpull-conv/project/train_flow.py"
 logs_dir="/scratch/p288722/runtime_data/pushpull-grayscale"
 task="classification"
 dataset_name="cifar10"
-corrupted_dataset_name="cifar10-c"
+corrupted_dataset_name="cifar10"
 
 if [ $dataset_name == "imagenet" ] || [ $dataset_name == "imagenet100" ] ||[ $dataset_name == "imagenet200" ]
 then
@@ -97,38 +97,32 @@ fi
 export CUDA_LAUNCH_BLOCKING=1
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
- case ${SLURM_ARRAY_TASK_ID} in
- 0) echo python ${train_script} --no-use_push_pull --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
- 1) python ${train_script} --avg_kernel_size 0 --no-trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
- 2) python ${train_script} --avg_kernel_size 3 --no-trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
- 3) python ${train_script} --avg_kernel_size 5 --no-trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
- 4) python ${train_script} --avg_kernel_size 0 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
- 5) python ${train_script} --avg_kernel_size 3 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
- 6) python ${train_script} --avg_kernel_size 5 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
-# 7) python ${train_script} --avg_kernel_size 5 --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
-# 8) python ${train_script} --avg_kernel_size 5 --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
- esac
-
- case ${SLURM_ARRAY_TASK_ID} in
+# case ${SLURM_ARRAY_TASK_ID} in
+# 0) python ${train_script} --no-use_push_pull --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
+# 1) python ${train_script} --avg_kernel_size 0 --no-trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
+# 2) python ${train_script} --avg_kernel_size 3 --no-trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
+# 3) python ${train_script} --avg_kernel_size 5 --no-trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
+# 4) python ${train_script} --avg_kernel_size 0 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
+# 5) python ${train_script} --avg_kernel_size 3 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
+# 6) python ${train_script} --avg_kernel_size 5 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
+# esac
+#
+# case ${SLURM_ARRAY_TASK_ID} in
 # 0) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}" ;;
- 1) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg0" ;;
- 2) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg3" ;;
- 3) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg5" ;;
- 4) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_inht_avg0" ;;
- 5) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_inht_avg3" ;;
- 6) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_inht_avg5" ;;
-# 7) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg5_inh3" ;;
-# 8) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg5_inh4" ;;
- esac
+# 1) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg0" ;;
+# 2) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg3" ;;
+# 3) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg5" ;;
+# 4) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_inht_avg0" ;;
+# 5) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_inht_avg3" ;;
+# 6) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_inht_avg5" ;;
+# esac
 
  case ${SLURM_ARRAY_TASK_ID} in
-# 0) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}" ${common_predict_args} --no-use_push_pull ;;
+ 0) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}" ${common_predict_args} --no-use_push_pull ;;
  1) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_avg0" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
  2) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_avg3" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
  3) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_avg5" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
  4) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_inht_avg0" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
  5) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_inht_avg3" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
  6) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_inht_avg5" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
-# 7) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_avg5_inh3" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
-# 8) python ${predict_script} --predict_model_logs_dir "${base_dir}/${model}_avg5_inh4" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} ;;
  esac

@@ -21,6 +21,23 @@ from torch.nn.modules.utils import _pair
 #     kernel = np.outer(gauss, gauss)
 #     return kernel / np.sum(kernel)
 
+def surround_kernel(sigma=2):
+    """
+    The output kernel size is int(8 * sigma + 1)
+    :param sigma:
+    :return:
+    """
+    ax = np.linspace(int(-4 * sigma), int(4 * sigma), int(8 * sigma + 1))
+    x, y = np.meshgrid(ax, ax)
+    g1_sigma = 4 * sigma
+    g2_sigma = sigma
+    g1 = np.exp(-(x ** 2 + y ** 2) / (2 * g1_sigma ** 2)) / (2 * np.pi * g1_sigma ** 2)
+    g2 = np.exp(-(x ** 2 + y ** 2) / (2 * g2_sigma ** 2)) / (2 * np.pi * g2_sigma ** 2)
+    g = g1 - g2
+    g[g < 0] = 0
+    g = g / np.sum(g)
+    return g
+
 
 class PushPullConv2DUnit(torch.nn.Module):
     def __init__(
@@ -46,6 +63,7 @@ class PushPullConv2DUnit(torch.nn.Module):
         self.padding = padding
         self.dilation = dilation
         self.groups = groups
+        self.out_channels = out_channels
         self.trainable_pull_inhibition = trainable_pull_inhibition
 
         if trainable_pull_inhibition:
@@ -58,6 +76,12 @@ class PushPullConv2DUnit(torch.nn.Module):
             in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride,
             padding=padding, dilation=dilation, groups=groups, bias=False, padding_mode=padding_mode, device=device,
             dtype=dtype)
+
+        ss_kernel_2d = surround_kernel(sigma=2)
+        ss_kernel = np.zeros((self.out_channels, self.out_channels, *ss_kernel_2d.shape))
+        for index in range(ss_kernel_2d.shape[0]):
+            ss_kernel[index, index] = ss_kernel_2d
+        self.surround_kernel = torch.tensor(ss_kernel, device='cuda').to(torch.float32)
 
         if avg_kernel_size != 0:
             self.avg = torch.nn.AvgPool2d(
@@ -89,6 +113,40 @@ class PushPullConv2DUnit(torch.nn.Module):
         self.push_conv.weight = value
 
     def forward(self, x):
+        """
+        This is an implementation of surround-suppression. The idea is to inhibit the push response w.r.t its surround.
+        This operation would suppress response to noise and fine-texture (for example, a single blade of grass).
+        Features with high-contrast, especially high-level shapes would be preserved. Thereby introducing bias towards
+        shape based features during the process of feature extraction. We believe, this bias would introduce robustness
+        towards high-level shape based features.
+        :param x: 4D input batch - (batch, channels, height, width)
+        :return: surround-suppressed response of the convolution
+        """
+
+        # Compute the push-response
+        push_response = self.push_conv(x)
+        push_response = F.relu_(push_response)
+
+        # Surround response
+        surr_response = F.conv2d(push_response, self.surround_kernel, padding='same')
+
+        # Suppressed push-response
+        if not self.trainable_pull_inhibition:
+            x_out = push_response - surr_response * self.pull_inhibition_strength
+        else:
+            x_out = push_response - surr_response * self.pull_inhibition_strength.view((1, -1, 1, 1))
+
+        if self.bias is not None:
+            x_out = x_out + self.bias.view((1, -1, 1, 1))
+
+        return x_out
+
+    def forward_pushpull(self, x):
+        """
+        Zero-response to homogeneous patches
+        :param x:
+        :return:
+        """
         push_kernel = self.push_conv.weight
         push_min = torch.amin(push_kernel, dim=(2, 3), keepdim=True)
         push_max = torch.amax(push_kernel, dim=(2, 3), keepdim=True)
@@ -96,8 +154,9 @@ class PushPullConv2DUnit(torch.nn.Module):
         push_sum = torch.sum(push_kernel, dim=(1, 2, 3), keepdims=True)
         pull_sum = torch.sum(pull_kernel, dim=(1, 2, 3), keepdims=True)
 
-        pull_kernel = pull_kernel / torch.abs(pull_sum) * torch.abs(push_sum)
-        inhibition_sign = torch.sign(push_sum / pull_sum)
+        eps = torch.finfo(torch.float32).eps
+        pull_kernel = pull_kernel / (torch.abs(pull_sum) + eps) * (torch.abs(push_sum) + eps)
+        inhibition_sign = torch.sign(push_sum) / torch.sign(pull_sum)
 
         push_response = self.push_conv(x)
         pull_response = F.conv2d(x, pull_kernel, None, self.stride, self.padding, self.dilation, self.groups)

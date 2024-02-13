@@ -153,6 +153,12 @@ def parse_args():
             args.lr_end = 5e-6
             args.weight_decay = 1e-4
 
+    if args.model == 'AlexNet':
+        args.lr_scheduler = 'step_lr'
+        args.lr_base = 1e-2
+        args.lr_step_size = int(args.max_epochs / 3)
+        args.lr_gamma = 0.1
+
     return args
 
 
@@ -161,7 +167,8 @@ def train_on_clean_images(args, ray_tune=False):
     # ------------
     # data
     # ------------
-    dataset = get_dataset(args.dataset_name, args.dataset_dir, args.augmentation, args.img_size, args.use_grayscale)
+    dataset = get_dataset(args.dataset_name, args.dataset_dir, args.augmentation, args.img_size, args.use_grayscale,
+                          model=args.model)
     train_loader = dataset.get_train_dataloader(args.batch_size, args.num_workers, shuffle=True)
     val_loader = dataset.get_validation_dataloader(args.batch_size, args.num_workers, shuffle=False)
     args.num_classes = dataset.get_num_classes()
@@ -200,7 +207,7 @@ def train_on_clean_images(args, ray_tune=False):
         # ckpt_callback3 = ModelCheckpoint(mode='max', monitor='val_top5_acc', filename='{epoch}-{val_top5_acc:.2f}')
         # tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
         #                                             "top5_acc_val": "top5_acc_val"}, on="validation_end")
-        callbacks.extend([ckpt_callback2,])
+        callbacks.extend([ckpt_callback2, ])
     elif args.task == 'retrieval':
         ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
         ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')

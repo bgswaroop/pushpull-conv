@@ -10,10 +10,10 @@ class AlexNet(BaseNet):
         super(AlexNet, self).__init__()
         self.save_hyperparameters(args)
 
-        if args.dataset_name in {'imagenet', 'imagenet100', 'imagenet200'}:
-            self.features = self._alexnet_for_imagenet(args)
-        elif args.dataset_name == 'cifar10':
-            self.features = self._alexnet_for_cifar(args)
+        # if args.dataset_name in {'imagenet', 'imagenet100', 'imagenet200'}:
+        self.features = self._alexnet_for_imagenet(args)
+        # elif args.dataset_name == 'cifar10':
+        #     self.features = self._alexnet_for_cifar(args)
 
         self.avgpool = nn.AdaptiveAvgPool2d((6, 6))
         self.classifier = nn.Sequential(
@@ -29,7 +29,7 @@ class AlexNet(BaseNet):
     @staticmethod
     def _alexnet_for_imagenet(args):
         """
-        The original implementation of the AlexNet is designed to handle inputs of size 256x256
+        The original implementation of the AlexNet is designed to handle inputs of size 224x224
         along with PushPull inhibition
         :param args:
         :return:

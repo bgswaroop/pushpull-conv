@@ -83,6 +83,7 @@ class CIFAR10:
             grayscale=False,
             augment=None,
             download: bool = True,
+            resize=None,
     ) -> None:
         self.root = root
         self.download = download
@@ -117,6 +118,15 @@ class CIFAR10:
                 self._transform_test,
                 transforms.Grayscale(num_output_channels=1)
             ])
+        if resize is not None:
+            self._transform_train = transforms.Compose([
+                self._transform_train,
+                transforms.Resize(resize, InterpolationMode.BILINEAR)
+            ])
+            self._transform_test = transforms.Compose([
+                self._transform_test,
+                transforms.Resize(resize, InterpolationMode.BILINEAR)
+            ])
 
     def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
         dataset = _CIFAR10(self.root, True, self._transform_train, None, self.download)
@@ -139,7 +149,7 @@ class CIFAR10:
 
 
 class CIFAR10C(Dataset):
-    def __init__(self, root_dir, num_splits, grayscale=False):
+    def __init__(self, root_dir, num_splits, grayscale=False, resize=None):
         super(CIFAR10C, self).__init__()
 
         self.num_splits = num_splits
@@ -164,6 +174,9 @@ class CIFAR10C(Dataset):
         self.transform = transforms.Compose([transforms.ToTensor(), _normalize])
         if grayscale:
             self.transform = transforms.Compose([self.transform, transforms.Grayscale(num_output_channels=1)])
+
+        if resize is not None:
+            self.transform = transforms.Compose([self.transform, transforms.Resize(resize, InterpolationMode.BILINEAR)])
 
     @property
     def corruption_type(self):
@@ -435,10 +448,7 @@ class ImageNetC:
             _normalize
         ])
         if grayscale:
-            self.transform = transforms.Compose([
-                self.transform,
-                transforms.Grayscale(num_output_channels=1)
-            ])
+            self.transform = transforms.Compose([self.transform, transforms.Grayscale(num_output_channels=1)])
 
         self.images = []
         self.labels = []
