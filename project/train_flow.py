@@ -75,8 +75,8 @@ def parse_args():
     assert Path(args.dataset_dir).exists(), f'dataset_dir {args.dataset_dir} does not exists!'
     Path(args.logs_dir).joinpath(args.experiment_name).mkdir(exist_ok=True, parents=True)
 
-    if args.use_push_pull:
-        assert args.avg_kernel_size is not None, "Invalid config: use_push_pull=True but avg_kernel_size is not set!"
+    # if args.use_push_pull:
+    #     assert args.avg_kernel_size is not None, "Invalid config: use_push_pull=True but avg_kernel_size is not set!"
 
     if args.ckpt:
         args.ckpt = Path(args.ckpt).resolve()
