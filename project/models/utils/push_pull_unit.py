@@ -112,7 +112,7 @@ class PushPullConv2DUnit(torch.nn.Module):
     def weight(self, value):
         self.push_conv.weight = value
 
-    def forward(self, x):
+    def forward_surround_suppression(self, x):
         """
         This is an implementation of surround-suppression. The idea is to inhibit the push response w.r.t its surround.
         This operation would suppress response to noise and fine-texture (for example, a single blade of grass).
@@ -141,9 +141,9 @@ class PushPullConv2DUnit(torch.nn.Module):
 
         return x_out
 
-    def forward_pushpull(self, x):
+    def forward(self, x):
         """
-        Zero-response to homogeneous patches
+        PushPull based inhibition
         :param x:
         :return:
         """
@@ -151,23 +151,23 @@ class PushPullConv2DUnit(torch.nn.Module):
         push_min = torch.amin(push_kernel, dim=(2, 3), keepdim=True)
         push_max = torch.amax(push_kernel, dim=(2, 3), keepdim=True)
         pull_kernel = -push_kernel + (push_max + push_min)
-        push_sum = torch.sum(push_kernel, dim=(1, 2, 3), keepdims=True)
-        pull_sum = torch.sum(pull_kernel, dim=(1, 2, 3), keepdims=True)
+        # push_sum = torch.sum(push_kernel, dim=(1, 2, 3), keepdims=True)
+        # pull_sum = torch.sum(pull_kernel, dim=(1, 2, 3), keepdims=True)
 
-        eps = torch.finfo(torch.float32).eps
-        pull_kernel = pull_kernel / (torch.abs(pull_sum) + eps) * (torch.abs(push_sum) + eps)
-        inhibition_sign = torch.sign(push_sum) / torch.sign(pull_sum)
+        # eps = torch.finfo(torch.float32).eps
+        # pull_kernel = pull_kernel / (torch.abs(pull_sum) + eps) * (torch.abs(push_sum) + eps)
+        # inhibition_sign = torch.sign(push_sum) / torch.sign(pull_sum)
 
         push_response = self.push_conv(x)
         pull_response = F.conv2d(x, pull_kernel, None, self.stride, self.padding, self.dilation, self.groups)
 
         if self.avg:
             pull_response = self.avg(pull_response)
-        # push_response = F.relu_(push_response)
-        # pull_response = F.relu_(pull_response)
+        push_response = F.relu_(push_response)
+        pull_response = F.relu_(pull_response)
 
         if not self.trainable_pull_inhibition:
-            x_out = push_response - pull_response * self.pull_inhibition_strength * inhibition_sign.view(1, -1, 1, 1)
+            x_out = push_response - pull_response * self.pull_inhibition_strength
         else:
             x_out = push_response - pull_response * self.pull_inhibition_strength.view((1, -1, 1, 1))
 

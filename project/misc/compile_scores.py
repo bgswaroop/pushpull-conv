@@ -1,4 +1,4 @@
-import json
+import yaml
 from pathlib import Path
 
 import pandas as pd
@@ -105,15 +105,15 @@ def plot_scores(experiments, all_scores, dataset_name, compile_scores_dir):
 
 
 def run_flow():
-    compile_scores_dir = Path(r'/scratch/p288722/runtime_data/surround_suppression/resnet50_imagenet_classification')
-    dataset_name = 'imagenet-c'
-    baseline_exp_dir = '/scratch/p288722/runtime_data/surround_suppression/resnet50_imagenet_classification/resnet50'
+    compile_scores_dir = Path(r'/scratch/p288722/runtime_data/pushpull-conv/resnet50_imagenet200_classification')
+    dataset_name = 'imagenet200-c'
+    baseline_exp_dir = '/scratch/p288722/runtime_data/pushpull-conv/resnet50_imagenet200_classification/resnet50'
     experiments = [
         'resnet50',
-        'resnet50_sigma2'
-        # 'resnet50_avg0',
-        # 'resnet50_avg3',
-        # 'resnet50_avg5',
+        # 'resnet50_sigma2'
+        'resnet50_avg0',
+        'resnet50_avg3',
+        'resnet50_avg5',
         # 'resnet50_inht_avg0',
         # 'resnet50_inht_avg3',
         # 'resnet50_inht_avg5',
@@ -137,12 +137,16 @@ def run_flow():
     all_scores = []
     errors = []
     for exp in experiments:
-        with open(compile_scores_dir.joinpath(rf'{exp}/results/all_scores.json')) as f:
-            exp_data = json.load(f)
-            errors_wrt_baseline.append(exp_data[dataset_name]['errors_wrt_baseline'][baseline_exp_dir])
-            scores_on_clean_dataset.append(exp_data[dataset_name]['scores']['clean'])
-            all_scores.append(exp_data[dataset_name]['scores'])
-            errors.append(exp_data[dataset_name]['errors'])
+        with open(compile_scores_dir.joinpath(rf'{exp}/results/results.yaml')) as f:
+            results_summary = yaml.safe_load(f)
+        # Choose the results from the last epoch
+        epoch = sorted(results_summary[dataset_name]['epoch_wise_results'])[-1]
+        result = results_summary[dataset_name]['epoch_wise_results'][epoch]
+        # Extract the necessary details
+        errors_wrt_baseline.append(result['errors_wrt_baseline'][baseline_exp_dir])
+        scores_on_clean_dataset.append(result['scores']['clean'])
+        all_scores.append(result['scores'])
+        errors.append(result['errors'])
 
     save_scores(experiments, scores_on_clean_dataset, errors, errors_wrt_baseline, compile_scores_dir)
     plot_scores(experiments, all_scores, dataset_name, compile_scores_dir)

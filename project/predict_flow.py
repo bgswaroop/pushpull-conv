@@ -1,11 +1,13 @@
 import argparse
 import json
-from collections import defaultdict
 from pathlib import Path
 
 import lightning.pytorch as pl
 import pandas as pd
 import torch
+import yaml
+from lightning.pytorch.callbacks import TQDMProgressBar
+from matplotlib import pyplot as plt
 from torchmetrics import Accuracy, ClasswiseWrapper
 
 from data import get_dataset
@@ -18,20 +20,20 @@ def compute_mean_corruption_error(scores):
     if 'clean' in scores:
         categories.remove('clean')
 
-    topk_CE, topk_mCE = dict(), dict()
+    topk_ce, topk_mce = dict(), dict()
     for top_k in scores['clean']:
         # Compute the error
         error_classifier = 1 - torch.Tensor([scores[x][top_k] for x in categories])
 
         # Corruption Error (CE) and it's mean
-        CE = torch.mean(error_classifier, dim=1)
-        mCE = torch.mean(CE)
+        ce = torch.mean(error_classifier, dim=1)
+        mce = torch.mean(ce)
 
         # converting all tensors to floats
-        topk_CE[top_k] = {x: float(CE[idx]) for idx, x in enumerate(categories)}
-        topk_mCE[top_k] = float(mCE)
+        topk_ce[top_k] = {x: float(ce[idx]) for idx, x in enumerate(categories)}
+        topk_mce[top_k] = float(mce)
 
-    return topk_CE, topk_mCE
+    return topk_ce, topk_mce
 
 
 def compute_model_robustness_metrics(scores, baseline_scores):
@@ -41,28 +43,29 @@ def compute_model_robustness_metrics(scores, baseline_scores):
     categories = sorted(scores.keys())
     categories.remove('clean')
 
-    topk_CE, topk_mCE, topk_rCE, topk_rmCE = dict(), dict(), dict(), dict()
+    topk_ce, topk_mce, topk_rce, topk_rmce = dict(), dict(), dict(), dict()
     for top_k in scores['clean']:
         # Compute the error
         error_classifier = 1 - torch.Tensor([scores[x][top_k] for x in categories])
         error_baseline = 1 - torch.Tensor([baseline_scores[x][top_k] for x in categories])
 
         # Corruption Error (CE) and it's mean
-        CE = torch.sum(error_classifier, dim=1) / torch.sum(error_baseline, dim=1)
-        mCE = torch.mean(CE)
+        ce = torch.sum(error_classifier, dim=1) / torch.sum(error_baseline, dim=1)
+        mce = torch.mean(ce)
 
         # Relative CE and it's mean
-        relative_CE = torch.sum(error_classifier - scores['clean'][top_k], dim=1) / \
-                      torch.sum(error_baseline - baseline_scores['clean'][top_k], dim=1)
-        relative_mCE = torch.mean(relative_CE)
+
+        relative_ce = torch.sum(error_classifier - scores['clean'][top_k], dim=1) / torch.sum(
+            error_baseline - baseline_scores['clean'][top_k], dim=1)
+        relative_mce = torch.mean(relative_ce)
 
         # converting all tensors to floats
-        topk_CE[top_k] = {x: float(CE[idx]) for idx, x in enumerate(categories)}
-        topk_mCE[top_k] = float(mCE)
-        topk_rCE[top_k] = {x: float(relative_CE[idx]) for idx, x in enumerate(categories)}
-        topk_rmCE[top_k] = float(relative_mCE)
+        topk_ce[top_k] = {x: float(ce[idx]) for idx, x in enumerate(categories)}
+        topk_mce[top_k] = float(mce)
+        topk_rce[top_k] = {x: float(relative_ce[idx]) for idx, x in enumerate(categories)}
+        topk_rmce[top_k] = float(relative_mce)
 
-    return topk_CE, topk_mCE, topk_rCE, topk_rmCE
+    return topk_ce, topk_mce, topk_rce, topk_rmce
 
 
 def parse_args():
@@ -86,6 +89,7 @@ def parse_args():
                         help='how many subprocesses to use for data loading. ``0`` means that the data will be '
                              'loaded in the main process. (default: ``2``)')
     parser.add_argument('--predict_model_logs_dir', type=str, required=True)
+    parser.add_argument('--models_to_predict', default='all', choices=['all', 'last'])
     parser.add_argument('--model', default='resnet18', type=str)
     parser.add_argument('--baseline_model_logs_dir', type=str, default=None)
     parser.add_argument('--corruption_types', nargs='*', default=None, type=str,
@@ -97,32 +101,26 @@ def parse_args():
     parser.add_argument('--num_push_pull_layers', type=int, default=1)
     parser.add_argument('--task', default='classification', type=str, required=False,
                         choices=['classification', 'retrieval'])
-
-    # parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
-    # args, unknown = parser.parse_known_args()
-    # print(args)
-    # print('\n\n\n')
-    # print(unknown)
-
     args.num_severities = 5
 
     assert Path(args.dataset_dir).exists(), f'{args.dataset_dir} does not exists!'
     assert Path(args.corrupted_dataset_dir).exists(), f'{args.corrupted_dataset_dir} does not exists!'
 
-    args.model_ckpt = Path(args.predict_model_logs_dir).joinpath('checkpoints/last.ckpt').resolve()
-    args.model_ckpt = Path(args.predict_model_logs_dir).joinpath(f'checkpoints/{args.model_ckpt.name}')
-    assert args.model_ckpt.exists(), f'{args.model_ckpt} does not exists!'
-    args.results_file = Path(args.predict_model_logs_dir).joinpath('results/all_scores.json')
+    args.results_file = Path(args.predict_model_logs_dir).joinpath('results/results.yaml')
     args.results_file.parent.mkdir(exist_ok=True, parents=True)
 
     if args.baseline_model_logs_dir is None:
         args.baseline_model_logs_dir = args.predict_model_logs_dir
-        args.baseline_results_file = Path(args.baseline_model_logs_dir).joinpath('results/all_scores.json')
+        args.baseline_results_file = Path(args.baseline_model_logs_dir).joinpath('results/results.yaml')
         args.baseline_results_file.parent.mkdir(exist_ok=True, parents=True)
     else:
-        args.baseline_results_file = Path(args.baseline_model_logs_dir).joinpath('results/all_scores.json')
+        args.baseline_results_file = Path(args.baseline_model_logs_dir).joinpath('results/results.yaml')
 
+    return args
+
+
+def reconfigure_args(args):
     model_ckpt = torch.load(args.model_ckpt)
     if 'hyper_parameters' in model_ckpt:
         args.num_classes = model_ckpt['hyper_parameters'].get('num_classes', None)
@@ -141,25 +139,27 @@ def parse_args():
         args.trainable_pull_inhibition = True
         args.use_push_pull = False
 
+    args.logs_dir = args.predict_model_logs_dir
     return args
 
 
-def predict_with_noise():
-    pl.seed_everything(1234)
-    args = parse_args()
-
-    args.logs_dir = args.predict_model_logs_dir
+def run_predict_flow(args):
+    args = reconfigure_args(args)
     model = get_classifier(args)
     state_dict = torch.load(args.model_ckpt)['state_dict']
+    epoch = torch.load(args.model_ckpt)['epoch']
 
     # Mapping the weights to the corresponding ones as per the ResNet names in this implementation
     state_dict = {k.removeprefix('module.'): v for k, v in state_dict.items()}
     # state_dict = {k.replace('bn1.', 'bn.') if k.startswith('bn1.') else k: v for k, v in state_dict.items()}
     state_dict = {k.replace('fc.', 'classifier.') if k.startswith('fc.') else k: v for k, v in state_dict.items()}
 
+    progress_bar_callback = TQDMProgressBar(refresh_rate=25)
+    callbacks=[progress_bar_callback,]
+
     model.load_state_dict(state_dict)
-    trainer = pl.Trainer(accelerator=args.accelerator, fast_dev_run=False)
-    device = trainer.strategy.root_device  # torch.device(f'cuda:{trainer.device_ids[0]}')
+    trainer = pl.Trainer(accelerator=args.accelerator, fast_dev_run=False, callbacks=callbacks)
+    device = trainer.strategy.root_device
     clean_dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size,
                                 grayscale=args.use_grayscale, model=args.model)
 
@@ -169,14 +169,18 @@ def predict_with_noise():
         train_predictions = torch.concat([x['predictions'] for x in predictions])
         train_ground_truths = torch.concat([x['ground_truths'] for x in predictions])
 
-    scores = defaultdict(dict)
-    without_baseline_file = args.results_file.parent.joinpath('wout_baseline.json')
+    scores = dict()
+    # without_baseline_file = args.results_file.parent.joinpath('wout_baseline.yaml')
     if args.results_file.exists():
         with open(args.results_file) as f:
-            scores.update(json.load(f)[args.corrupted_dataset_name]['scores'])
-    elif without_baseline_file.exists():
-        with open(without_baseline_file) as f:
-            scores.update(json.load(f)[args.corrupted_dataset_name]['scores'])
+            epoch_wise_results = yaml.safe_load(f)[args.corrupted_dataset_name]['epoch_wise_results']
+            if f'epoch_{epoch:03d}' in epoch_wise_results:
+                scores.update(epoch_wise_results[f'epoch_{epoch:03d}']['scores'])
+    # elif without_baseline_file.exists():
+    #     with open(without_baseline_file) as f:
+    #         epoch_wise_results = yaml.safe_load(f)[args.corrupted_dataset_name]['epoch_wise_results']
+    #         if f'epoch_{epoch:03d}' in epoch_wise_results:
+    #             scores.update(epoch_wise_results[f'epoch_{epoch:03d}']['scores'])
 
     # if 'clean' not in scores:
     test_loader = clean_dataset.get_test_dataloader(args.batch_size, args.num_workers)
@@ -248,61 +252,123 @@ def predict_with_noise():
         classwise_scores_file = args.results_file.parent.joinpath('classwise_scores.csv')
         classwise_results.to_csv(classwise_scores_file, sep=',')
 
-    CE, mCE = compute_mean_corruption_error(scores)
-    corruption_errors = {'CE': CE, 'mCE': mCE}
-
-    with open(without_baseline_file, 'w+') as f:
-        results_summary = {args.corrupted_dataset_name: {
-            'scores': scores,
-            'errors': corruption_errors
-        }}
-        json.dump(results_summary, f, indent=2, sort_keys=True)
+    ce, mce = compute_mean_corruption_error(scores)
+    corruption_errors = {'CE': ce, 'mCE': mce}
+    # result = {
+    #     'checkpoint': str(args.model_ckpt),
+    #     'scores': scores,
+    #     'errors': corruption_errors
+    # }
+    #
+    # if without_baseline_file.exists():
+    #     with open(without_baseline_file, 'r') as f:
+    #         results_summary = yaml.safe_load(f)
+    #         results_summary[args.corrupted_dataset_name]['epoch_wise_results'][f'epoch_{epoch:03d}'] = result
+    # else:
+    #     results_summary = {args.corrupted_dataset_name: {'epoch_wise_results': {f'epoch_{epoch:03d}': result}}}
+    # with open(without_baseline_file, 'w+') as f:
+    #     yaml.safe_dump(results_summary, f, default_flow_style=None, width=float("inf"))  # Verified
 
     # Compute mCE and relative-mCE scores from mAP w.r.t a baseline
     if args.baseline_results_file.exists():
         with open(args.baseline_results_file) as f:
-            baseline_scores = json.load(f)[args.corrupted_dataset_name]['scores']
+            results_summary = yaml.safe_load(f)
+        if f'epoch_{epoch:03d}' in results_summary[args.corrupted_dataset_name]['epoch_wise_results']:
+            results = results_summary[args.corrupted_dataset_name]['epoch_wise_results'][f'epoch_{epoch:03d}']
+            baseline_scores = results['scores']
+        else:
+            baseline_scores = scores
     else:  # when baseline is not provided
         baseline_scores = scores
-    CE, mCE, relative_CE, relative_mCE = compute_model_robustness_metrics(scores, baseline_scores)
+
+    ce, mce, relative_ce, relative_mce = compute_model_robustness_metrics(scores, baseline_scores)
     errors_wrt_baseline = {
-        'CE': CE,
-        'mCE': mCE,
-        'relative_CE': relative_CE,
-        'relative_mCE': relative_mCE,
+        'CE': ce,
+        'mCE': mce,
+        'relative_CE': relative_ce,
+        'relative_mCE': relative_mce,
     }
 
-    # Update the results to the JSON file - all_scores.json
+    result = {
+        'checkpoint': str(args.model_ckpt),
+        'errors': corruption_errors,
+        'errors_wrt_baseline': {args.baseline_model_logs_dir: errors_wrt_baseline},
+        'scores': scores,
+    }
+
+    # Update to - results.yaml
     if args.results_file.exists():
         with open(args.results_file, 'r') as f:
-            results_summary = json.load(f)
+            results_summary = yaml.safe_load(f)
+
         if args.corrupted_dataset_name in results_summary:
+            epoch_wise_results = results_summary[args.corrupted_dataset_name]['epoch_wise_results']
 
-            results_summary[args.corrupted_dataset_name]['scores'] = scores
-            results_summary[args.corrupted_dataset_name]['errors'] = corruption_errors
-
-            temp = results_summary[args.corrupted_dataset_name].get('errors_wrt_baseline', dict())
-            temp[args.baseline_model_logs_dir] = errors_wrt_baseline
-            results_summary[args.corrupted_dataset_name]['errors_wrt_baseline'] = temp
-
+            if f'epoch_{epoch:03d}' in epoch_wise_results:
+                result = epoch_wise_results[f'epoch_{epoch:03d}']
+                temp = result.get('errors_wrt_baseline', dict())
+                temp[args.baseline_model_logs_dir] = errors_wrt_baseline
+                result['errors_wrt_baseline'] = temp
+                result['scores'] = scores
+                result['errors'] = corruption_errors
+                result['checkpoint'] = str(args.model_ckpt)
+                results_summary[args.corrupted_dataset_name]['epoch_wise_results'][f'epoch_{epoch:03d}'] = result
+            else:
+                results_summary[args.corrupted_dataset_name]['epoch_wise_results'][f'epoch_{epoch:03d}'] = result
         else:
-            results_summary[args.corrupted_dataset_name] = {
-                'scores': scores,
-                'errors_wrt_baseline': {args.baseline_model_logs_dir: errors_wrt_baseline},
-                'errors': corruption_errors,
-            }
+            results_summary[args.corrupted_dataset_name] = {'epoch_wise_results': {f'epoch_{epoch:03d}': result}}
     else:
-        results_summary = {args.corrupted_dataset_name: {
-            'scores': scores,
-            'errors_wrt_baseline': {args.baseline_model_logs_dir: errors_wrt_baseline},
-            'errors': corruption_errors
-        }}
+        results_summary = {args.corrupted_dataset_name: {'epoch_wise_results': {f'epoch_{epoch:03d}': result}}}
 
     with open(args.results_file, 'w+') as f:
-        json.dump(results_summary, f, indent=2, sort_keys=True)
+        yaml.safe_dump(results_summary, f, default_flow_style=None, width=float("inf"))  # Verified
+
+
+def parse_args_and_run_predict_flow():
+    pl.seed_everything(1234)
+    args = parse_args()
+
+    if args.models_to_predict == 'last':
+        args.model_ckpt = Path(args.predict_model_logs_dir).joinpath('checkpoints/last.ckpt').resolve()
+        args.model_ckpt = Path(args.predict_model_logs_dir).joinpath(f'checkpoints/{args.model_ckpt.name}')
+        assert args.model_ckpt.exists(), f'{args.model_ckpt} does not exists!'
+        run_predict_flow(args)
+
+    elif args.models_to_predict == 'all':
+        checkpoints = sorted(Path(args.predict_model_logs_dir).glob('checkpoints/epoch=*.ckpt'))
+        for ckpt in checkpoints:
+            args.model_ckpt = ckpt
+            run_predict_flow(args)
+
+        with open(args.results_file, 'r') as f:
+            epoch_wise_results = yaml.safe_load(f)[args.corrupted_dataset_name]['epoch_wise_results']
+        tradeoff = []
+        for epoch, result in epoch_wise_results.items():
+            acc = result['scores']['clean']['top1']
+            rob = result['errors']['mCE']['top1']
+            tradeoff.append(acc / rob)
+
+        with open(args.baseline_results_file, 'r') as f:
+            epoch_wise_results = yaml.safe_load(f)[args.corrupted_dataset_name]['epoch_wise_results']
+        baseline_tradeoff = []
+        for epoch, result in epoch_wise_results.items():
+            acc = result['scores']['clean']['top1']
+            rob = result['errors']['mCE']['top1']
+            baseline_tradeoff.append(acc / rob)
+
+        plt.figure(dpi=300)
+        x = range(len(baseline_tradeoff))
+        plt.plot(x, baseline_tradeoff, label=f'baseline {args.baseline_results_file.parent.parent.name}')
+        plt.plot(x, tradeoff, label=f'{args.results_file.parent.parent.name}')
+        plt.xlabel('Epoch')
+        plt.ylabel('Ratio = Acc / Robustness')
+        plt.title('Trade-off between Accuracy and Robustness')
+        plt.legend()
+        plt.savefig(f'{args.results_file.parent.joinpath("acc_vs_robustness.png")}')
+        plt.show()
 
     print('Job finished!')
 
 
 if __name__ == '__main__':
-    predict_with_noise()
+    parse_args_and_run_predict_flow()

@@ -199,21 +199,25 @@ def train_on_clean_images(args, ray_tune=False):
     # ------------
     # training
     # ------------
-    ckpt_callback0 = ModelCheckpoint(filename='{epoch}-last', save_last=True)
-    ckpt_callback1 = ModelCheckpoint(mode='min', monitor='val_loss', filename='{epoch}-{val_loss:.2f}')
-    callbacks = [ckpt_callback0, ckpt_callback1]
+    # ckpt_callback0 = ModelCheckpoint(filename='{epoch}-last', save_last=True)
     if args.task == 'classification':
-        ckpt_callback2 = ModelCheckpoint(mode='max', monitor='val_top1_acc', filename='{epoch}-{val_top1_acc:.2f}')
+        ckpt_callback1 = ModelCheckpoint(filename='{epoch:02d}-{val_top1_acc:.2f}-{val_loss:.2f}', every_n_epochs=1,
+                                         save_top_k=-1, save_last=True)
+        # ckpt_callback2 = ModelCheckpoint(mode='max', monitor='val_top1_acc', filename='{epoch}-{val_top1_acc:.2f}')
         # ckpt_callback3 = ModelCheckpoint(mode='max', monitor='val_top5_acc', filename='{epoch}-{val_top5_acc:.2f}')
         # tune_callback = TuneReportCallback(metrics={"top1_acc_val": "top1_acc_val",
         #                                             "top5_acc_val": "top5_acc_val"}, on="validation_end")
-        callbacks.extend([ckpt_callback2, ])
+        # callbacks.extend([ckpt_callback2, ])
     elif args.task == 'retrieval':
-        ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
-        ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')
+        ckpt_callback1 = ModelCheckpoint(filename='{epoch:02d}-{top50_mAP_val:.2f}-{top200_mAP_val:.2f}',
+                                         every_n_epochs=1, save_top_k=-1, save_last=True)
+        # ckpt_callback2 = ModelCheckpoint(mode='max', monitor='top50_mAP_val', filename='{epoch}-{top50_mAP_val:.2f}')
+        # ckpt_callback3 = ModelCheckpoint(mode='max', monitor='top200_mAP_val', filename='{epoch}-{top200_mAP_val:.2f}')
         # tune_callback = TuneReportCallback(metrics={"top200_mAP_val": "top200_mAP_val", }, on="validation_end")
     else:
         raise ValueError('Invalid task!')
+    # ckpt_callback2 = ModelCheckpoint(save_last=True)
+    callbacks = [ckpt_callback1, ]
     lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
     progress_bar_callback = TQDMProgressBar(refresh_rate=200)
 
