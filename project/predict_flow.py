@@ -335,7 +335,7 @@ def parse_args_and_run_predict_flow():
         run_predict_flow(args)
 
     elif args.models_to_predict == 'all':
-        checkpoints = sorted(Path(args.predict_model_logs_dir).glob('checkpoints/epoch=*.ckpt'))
+        checkpoints = sorted(Path(args.predict_model_logs_dir).glob('checkpoints/epoch=*.ckpt'), reverse=True)
         for ckpt in checkpoints:
             args.model_ckpt = ckpt
             run_predict_flow(args)

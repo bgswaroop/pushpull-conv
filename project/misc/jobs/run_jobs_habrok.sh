@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=r18_ci
-#SBATCH --time=00:20:00
-#SBATCH --mem=16gb
+#SBATCH --job-name=r18_in
+#SBATCH --time=48:00:00
+#SBATCH --mem=64gb
 #SBATCH --gpus-per-node=a100.20gb:1
-#SBATCH --cpus-per-task=4
-#SBATCH --array=2-3
+#SBATCH --cpus-per-task=8
+#SBATCH --array=0-3
 
 # SLURM Notation used above
 # %x - Name of the Job
@@ -40,8 +40,8 @@ which python
 train_script="$HOME/git_code/pushpull-conv/project/train_flow.py"
 logs_dir="/scratch/p288722/runtime_data/pushpull-conv"
 task="classification"
-dataset_name="imagenet200"
-corrupted_dataset_name="imagenet200-c"
+dataset_name="imagenet"
+corrupted_dataset_name="imagenet-c"
 
 if [ $dataset_name == "imagenet" ] || [ $dataset_name == "imagenet100" ] ||[ $dataset_name == "imagenet200" ]
 then
@@ -81,19 +81,19 @@ fi
 export CUDA_LAUNCH_BLOCKING=1
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
-# case ${SLURM_ARRAY_TASK_ID} in
-# 0) python ${train_script} --no-use_push_pull --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
-# 1) python ${train_script} --avg_kernel_size 0 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
-# 2) python ${train_script} --avg_kernel_size 3 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
-# 3) python ${train_script} --avg_kernel_size 5 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
-# esac
-#
-# case ${SLURM_ARRAY_TASK_ID} in
-# 0) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}" ;;
-# 1) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg0" ;;
-# 2) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg3" ;;
-# 3) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg5" ;;
-# esac
+ case ${SLURM_ARRAY_TASK_ID} in
+ 0) python ${train_script} --no-use_push_pull --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
+ 1) python ${train_script} --avg_kernel_size 0 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
+ 2) python ${train_script} --avg_kernel_size 3 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
+ 3) python ${train_script} --avg_kernel_size 5 --trainable_pull_inhibition --logs_version ${SLURM_ARRAY_TASK_ID}  ${common_train_args} ;;
+ esac
+
+ case ${SLURM_ARRAY_TASK_ID} in
+ 0) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}" ;;
+ 1) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg0" ;;
+ 2) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg3" ;;
+ 3) mv "${base_dir}/version_${SLURM_ARRAY_TASK_ID}" "$base_dir/${model}_avg5" ;;
+ esac
 
  case ${SLURM_ARRAY_TASK_ID} in
  0) python ${predict_script} --models_to_predict all --predict_model_logs_dir "${base_dir}/${model}" ${common_predict_args} --no-use_push_pull ;;
@@ -103,10 +103,11 @@ export CUBLAS_WORKSPACE_CONFIG=:4096:8
  esac
 
 
-#scp -r p288722@login1.hb.hpc.rug.nl:/scratch/p288722/runtime_data/pushpull-conv/resnet50_imagenet100_classification/resnet50/results/acc_vs_robustness.png res50_imagenet100_baseline.png
-#scp -r p288722@login1.hb.hpc.rug.nl:/scratch/p288722/runtime_data/pushpull-conv/resnet50_imagenet100_classification/resnet50_avg0/results/acc_vs_robustness.png res50_imagenet100_avg0.png
-#scp -r p288722@login1.hb.hpc.rug.nl:/scratch/p288722/runtime_data/pushpull-conv/resnet50_imagenet100_classification/resnet50_avg3/results/acc_vs_robustness.png res50_imagenet100_avg3.png
-#scp -r p288722@login1.hb.hpc.rug.nl:/scratch/p288722/runtime_data/pushpull-conv/resnet50_imagenet100_classification/resnet50_avg5/results/acc_vs_robustness.png res50_imagenet100_avg5.png
+#scp -r p288722@login1.hb.hpc.rug.nl:/scratch/p288722/runtime_data/pushpull-conv/resnet18_imagenet100_classification/resnet18/results/acc_vs_robustness.png res18_imagenet100_baseline.png
+#scp -r p288722@login1.hb.hpc.rug.nl:/scratch/p288722/runtime_data/pushpull-conv/resnet18_imagenet100_classification/resnet18_avg0/results/acc_vs_robustness.png res18_imagenet100_avg0.png
+#scp -r p288722@login1.hb.hpc.rug.nl:/scratch/p288722/runtime_data/pushpull-conv/resnet18_imagenet100_classification/resnet18_avg3/results/acc_vs_robustness.png res18_imagenet100_avg3.png
+#scp -r p288722@login1.hb.hpc.rug.nl:/scratch/p288722/runtime_data/pushpull-conv/resnet18_imagenet100_classification/resnet18_avg5/results/acc_vs_robustness.png res18_imagenet100_avg5.png
+#
 #scp -r p288722@login1.hb.hpc.rug.nl:/scratch/p288722/runtime_data/pushpull-conv/resnet50_imagenet200_classification/resnet50/results/acc_vs_robustness.png res50_imagenet200_baseline.png
 #scp -r p288722@login1.hb.hpc.rug.nl:/scratch/p288722/runtime_data/pushpull-conv/resnet50_imagenet200_classification/resnet50_avg0/results/acc_vs_robustness.png res50_imagenet200_avg0.png
 #scp -r p288722@login1.hb.hpc.rug.nl:/scratch/p288722/runtime_data/pushpull-conv/resnet50_imagenet200_classification/resnet50_avg3/results/acc_vs_robustness.png res50_imagenet200_avg3.png
