@@ -5,3 +5,5 @@
 /project/misc/analyze_results/
 /project/misc/analyze_resnet_kernels_selectivity.py
 .idea
+/project/data/utils/samples_after_normalization/
+/project/data/utils/samples_before_normalization/
