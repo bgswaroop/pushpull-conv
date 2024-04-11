@@ -64,6 +64,8 @@ def parse_args():
 
     parser.add_argument('--lr_base', type=float, default=0.1)
     parser.add_argument('--weight_decay', type=float, default=1e-4)  # regularization
+    parser.add_argument('--lr_step_size', type=int, default=30)
+    parser.add_argument('--lr_gamma', type=float, default=0.1)
     parser.add_argument('--hash_length', type=int, default=64)
     parser.add_argument('--quantization_weight', type=float, default=1e-4)
     parser.add_argument('--augmentation', default='none', type=str,
@@ -109,6 +111,8 @@ def parse_args():
             args.max_epochs = 20  # 90 (20) epochs for long (short) training
             args.batch_size = 128  # 256 (128) when num_epochs = 90 (20)
             args.lr_scheduler = 'one_cycle'
+            args.lr_base = 0.1
+            # The below args are only relevant when using "one_cycle" lr_schedule
             args.lr_three_phase = False
             args.lr_initial = 0.05
             args.lr_max = 1.0

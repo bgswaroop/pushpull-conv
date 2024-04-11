@@ -1,5 +1,5 @@
 import json
-import xml.etree.ElementTree as ET
+# import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional, Callable, Tuple, Any
@@ -8,7 +8,7 @@ import PIL.Image
 import numpy as np
 import torch
 import torchvision.datasets
-from PIL import PngImagePlugin
+# from PIL import PngImagePlugin
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms, InterpolationMode
 
@@ -16,8 +16,8 @@ from torchvision.transforms import transforms, InterpolationMode
 # import lmdb
 # import pyarrow as pa
 
-LARGE_ENOUGH_NUMBER = 100
-PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024 ** 2)
+# LARGE_ENOUGH_NUMBER = 100
+# PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024 ** 2)
 
 
 class _CIFAR10(torchvision.datasets.CIFAR10):
@@ -392,7 +392,7 @@ class ImageNet:
     def get_train_dataloader(self, batch_size, num_workers, shuffle=True):
         self.dataset = _ImageNetBase(self.root, 'train', self.img_size, self.num_classes, self.train_set_fraction,
                                      self.augment, self.grayscale)
-        prefetch_factor = 16 if num_workers > 0 else None
+        prefetch_factor = 4 if num_workers > 0 else None
         persistent_workers = True if num_workers > 0 else False
         timeout = 600 if num_workers > 0 else 0
         train_loader = DataLoader(self.dataset, batch_size, shuffle, num_workers=num_workers, timeout=timeout,
@@ -402,7 +402,7 @@ class ImageNet:
 
     def get_validation_dataloader(self, batch_size=None, num_workers=None, shuffle=False):
         self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.num_classes, grayscale=self.grayscale)
-        prefetch_factor = 16 if num_workers > 0 else None
+        prefetch_factor = 4 if num_workers > 0 else None
         persistent_workers = True if num_workers > 0 else False
         timeout = 600 if num_workers > 0 else 0
         val_loader = DataLoader(self.dataset, batch_size, shuffle, num_workers=num_workers, timeout=timeout,
@@ -412,7 +412,7 @@ class ImageNet:
 
     def get_test_dataloader(self, batch_size, num_workers, shuffle=False):
         self.dataset = _ImageNetBase(self.root, 'val', self.img_size, self.num_classes, grayscale=self.grayscale)
-        prefetch_factor = 16 if num_workers > 0 else None
+        prefetch_factor = 4 if num_workers > 0 else None
         persistent_workers = True if num_workers > 0 else False
         timeout = 600 if num_workers > 0 else 0
         test_loader = DataLoader(self.dataset, batch_size, shuffle, num_workers=num_workers, timeout=timeout,
