@@ -13,6 +13,10 @@ class BaseNet(pl.LightningModule):
         super(BaseNet, self).__init__()
 
     def training_step(self, batch, batch_idx):
+        if 'GeneralizedPRIMEModule' in str(self.hparams.augmentation):
+            x, y, y_soft = batch
+            x = self.hparams.augmentation(x)
+            batch = [x, y, y_soft]
         loss, acc1, acc5 = self.evaluate(batch, stage='train', batch_idx=batch_idx)
         self.log('train_loss', loss, rank_zero_only=True)
         self.log('train_top1-accuracy', acc1, on_epoch=True, on_step=True, rank_zero_only=True)

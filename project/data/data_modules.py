@@ -11,6 +11,7 @@ import torchvision.datasets
 # from PIL import PngImagePlugin
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms, InterpolationMode
+# from project.data.prime import GeneralizedPRIMEModule
 
 # import os
 # import lmdb
@@ -234,14 +235,23 @@ class _ImageNetBase(Dataset):
         _normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 
         if augment:
-            self._transform_train = transforms.Compose([
-                augment,
-                transforms.Resize(256, InterpolationMode.BILINEAR),
-                transforms.RandomCrop(img_size),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                _normalize,
-            ])
+            if 'GeneralizedPRIMEModule' in str(augment):
+                self._transform_train = transforms.Compose([
+                    transforms.Resize(256, InterpolationMode.BILINEAR),
+                    transforms.RandomCrop(img_size),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    # augment, # Augmentation & normalization is done at the batch-level
+                ])
+            else:
+                self._transform_train = transforms.Compose([
+                    augment,
+                    transforms.Resize(256, InterpolationMode.BILINEAR),
+                    transforms.RandomCrop(img_size),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    _normalize,
+                ])
         else:
             self._transform_train = transforms.Compose([
                 transforms.Resize(256, InterpolationMode.BILINEAR),

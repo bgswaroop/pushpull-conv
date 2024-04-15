@@ -69,7 +69,7 @@ def parse_args():
     parser.add_argument('--hash_length', type=int, default=64)
     parser.add_argument('--quantization_weight', type=float, default=1e-4)
     parser.add_argument('--augmentation', default='none', type=str,
-                        choices=['AugMix', 'AutoAug', 'RandAug', 'none', 'TrivialAugment'])
+                        choices=['AugMix', 'AutoAug', 'RandAug', 'none', 'TrivialAugment', 'prime'])
 
     # parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()

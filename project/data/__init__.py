@@ -1,12 +1,16 @@
 import torchvision
 
 from .data_modules import CIFAR10, CIFAR10C, ImageNet, ImageNetC
+from .prime import get_prime_augmentation_for_imagenet
 
 __all__ = (
     'CIFAR10', 'CIFAR10C',
     'ImageNet', 'ImageNetC',
-    'get_dataset', 'get_augmentation'
+    'get_dataset', 'get_augmentation',
+    'get_prime_augmentation_for_imagenet'
 )
+
+
 
 
 def get_dataset(dataset_name, dataset_dir, augment=None, img_size=224, grayscale=False, num_severities=5, model=None):
@@ -58,5 +62,10 @@ def get_augmentation(augmentation, dataset_name):
         return torchvision.transforms.RandAugment()
     elif augmentation == 'TrivialAugment':
         return torchvision.transforms.TrivialAugmentWide()
+    elif augmentation == 'prime':
+        if 'imagenet' in dataset_name:
+            return get_prime_augmentation_for_imagenet()
+        else:
+            raise ValueError('Invalid dataset_name for the type of augmentation')
     else:
         raise ValueError('Invalid augmentation')

@@ -148,8 +148,8 @@ class PushPullConv2DUnit(torch.nn.Module):
         :return:
         """
         push_kernel = self.push_conv.weight
-        push_min = torch.amin(push_kernel, dim=(2, 3), keepdim=True)
-        push_max = torch.amax(push_kernel, dim=(2, 3), keepdim=True)
+        push_min = torch.amin(push_kernel, dim=(1, 2, 3), keepdim=True)
+        push_max = torch.amax(push_kernel, dim=(1, 2, 3), keepdim=True)
         pull_kernel = -push_kernel + (push_max + push_min)
         # push_sum = torch.sum(push_kernel, dim=(1, 2, 3), keepdims=True)
         # pull_sum = torch.sum(pull_kernel, dim=(1, 2, 3), keepdims=True)

@@ -85,11 +85,12 @@ def parse_args():
                                  'imagenet-c', 'imagenet100-c', 'imagenet200-c'])
 
     parser.add_argument('--accelerator', type=str, choices=['cpu', 'gpu', 'auto'])
+    parser.add_argument('--devices', type=str, default='auto')
     parser.add_argument('--num_workers', default=2, type=int,
                         help='how many subprocesses to use for data loading. ``0`` means that the data will be '
                              'loaded in the main process. (default: ``2``)')
     parser.add_argument('--predict_model_logs_dir', type=str, required=True)
-    parser.add_argument('--models_to_predict', default='all', choices=['all', 'last'])
+    parser.add_argument('--models_to_predict', default='last', choices=['all', 'last'])
     parser.add_argument('--model', default='resnet18', type=str)
     parser.add_argument('--baseline_model_logs_dir', type=str, default=None)
     parser.add_argument('--corruption_types', nargs='*', default=None, type=str,
@@ -158,7 +159,7 @@ def run_predict_flow(args):
     callbacks=[progress_bar_callback,]
 
     model.load_state_dict(state_dict)
-    trainer = pl.Trainer(accelerator=args.accelerator, fast_dev_run=False, callbacks=callbacks)
+    trainer = pl.Trainer(accelerator=args.accelerator, fast_dev_run=False, callbacks=callbacks, devices=args.devices)
     device = trainer.strategy.root_device
     clean_dataset = get_dataset(args.dataset_name, args.dataset_dir, img_size=args.img_size,
                                 grayscale=args.use_grayscale, model=args.model)
