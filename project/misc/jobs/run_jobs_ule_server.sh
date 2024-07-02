@@ -21,8 +21,8 @@ then
 fi
 
 # There are 96 CPU cores available on each node. Running 4 jobs in parallel ==> 24 cores for each job
-# When augmentation is set to prime, unable to use more than 2 workers
-num_workers=2
+# When augmentation is set to prime, unable to use more than 2 workers (only for train), can use 12 workers for predict
+num_workers=12
 
 model="resnet50"
 experiment_name="${model}_${dataset_name}_${task}_prime"
@@ -36,7 +36,7 @@ common_predict_args="--accelerator gpu --img_size 224 --model ${model} --num_wor
 export CUDA_LAUNCH_BLOCKING=1
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
-phase="train"
+phase="eval"
 #i=0
 #avg=-1
 #mkdir -p "${base_dir}/version_${i}"
@@ -48,8 +48,8 @@ phase="train"
 
 i=1
 avg=3
-mkdir -p "${base_dir}/version_${i}"
-python ${train_script} --avg_kernel_size ${avg} --trainable_pull_inhibition --logs_version ${i}  ${common_train_args} --devices "$((i%2))," > "${base_dir}/version_${i}/logs_train.out" 2>&1
+#mkdir -p "${base_dir}/version_${i}"
+#python ${train_script} --avg_kernel_size ${avg} --trainable_pull_inhibition --logs_version ${i}  ${common_train_args} --devices "$((i%2))," > "${base_dir}/version_${i}/logs_train.out" 2>&1
 experiment_dir="$base_dir/${model}_avg${avg}"
 mv "${base_dir}/version_${i}" "${experiment_dir}"
 python ${predict_script} --models_to_predict last --predict_model_logs_dir "${experiment_dir}" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} --devices "$((i%2))," > "${experiment_dir}/logs_predict.out" 2>&1

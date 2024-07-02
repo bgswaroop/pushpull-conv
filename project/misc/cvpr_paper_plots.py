@@ -11,9 +11,9 @@ from torchvision.models import resnet50, ResNet50_Weights
 
 
 def plot_mCE_versus_clean_error():
-    filename = '/home/guru/runtime_data/pushpull-conv/resnet18_imagenet100_classification_w_relu/absolute_CE_top1.csv'
+    filename = '/home/guru/runtime_data/pushpull-conv-ver0/resnet18_imagenet100_classification_w_relu/absolute_CE_top1.csv'
     df = pd.read_csv(filename, index_col=0)
-    plt.figure(dpi=300, figsize=(5, 3))
+    plt.figure(dpi=300, figsize=(5, 2.5))
     plt.gca().xaxis.set_major_formatter(StrMethodFormatter('{x:,.2f}'))  # 2 decimal places
     plt.gca().yaxis.set_major_formatter(StrMethodFormatter('{x:,.2f}'))  # 2 decimal places
     markers = ["o", "v", "^", "<", ">", "p", "P", "H", '*', "v", "^", "<", ">", "p", "P", "H", '*']
@@ -26,23 +26,45 @@ def plot_mCE_versus_clean_error():
               '#F9E405', '#fad507', '#fac609', '#fca10a', '#fd7c0b', '#fc6b07', '#fb5a03',
               '#FF4d00',
               ]
+
+    plt.plot([0.280, 0.200], [0.508, 0.588], '--', alpha=0.3, c='red', linewidth=0.5, label='Trade-off with beta=2.81')
+    plt.text(0.245, 0.53, '+ve', c='red', alpha=0.3, size=6)
+    plt.text(0.25, 0.545, '-ve', c='red', alpha=0.3, size=6)
+
+    plt.plot([0.235, 0.205], [0.503, 0.587], '--', alpha=0.3, c='blue', linewidth=0.5, label='Trade-off with beta=1')
+    plt.text(0.22, 0.51, '+ve', c='blue', alpha=0.3, size=6)
+    plt.text(0.235, 0.52, '-ve', c='blue', alpha=0.3, size=6)
+
     for idx, (ce, mce, l, m, c) in enumerate(zip(df['Error'], df['mCE'], df.index, markers, colors)):
         if idx == 0:
             prefix_to_discard = f'{l}_'
             l = 'baseline'
+            x0 = ce
+            y0 = mce
         else:
             l = l[len(prefix_to_discard):]
-        plt.scatter(ce, mce, marker=m, label=l, c=c)
-    plt_title = 'ResNet18 trained on ImageNet100'
-    plt.title(plt_title, pad=12, fontsize=11)
-    plt.tick_params(axis='x', labelsize=8)
-    plt.tick_params(axis='y', labelsize=8)
+        # tradeoff_ratio1 = (1 - ce) / mce
+        # tradeoff_ratio2 = (1 - mce) / ce
+        # print(f'{round(tradeoff_ratio1, 3)}, {round(tradeoff_ratio2, 3)} - {l}')
+        print(f'{l}, {ce}, {mce}')
+        plt.scatter(ce, mce, s=5**2, marker=m, label=l, c=c, alpha=0.6)
+
+    # x + y = x0 + y0
+    # 2 * x0 * y0 = x0 * y + y0 *x
+
+
+
+
+    # plt_title = 'ResNet18 trained on ImageNet100'
+    # plt.title(plt_title, pad=12, fontsize=11)
+    plt.tick_params(axis='x', labelsize=6)
+    plt.tick_params(axis='y', labelsize=6)
     plt.locator_params(axis='y', nbins=5)
     plt.locator_params(axis='x', nbins=5)
 
-    plt.xlabel('Clean error', labelpad=8, fontsize=10)
-    plt.ylabel('Absolute mCE', labelpad=8, fontsize=10)
-    plt.legend(bbox_to_anchor=(1.05, 1.20), loc="upper left", prop={'size': 7.5}, frameon=False)
+    plt.xlabel('Clean error', labelpad=None, fontsize=6)
+    plt.ylabel('Absolute mCE', labelpad=None, fontsize=6)
+    plt.legend(bbox_to_anchor=(1.05, 1.00), loc="upper left", prop={'size': 6}, frameon=False)
     plt.tight_layout(pad=0.5)
     plt.savefig(f'_plot_figures/figure_{Path(filename).parent.name}.eps', format='eps')
     # plt.savefig(f'_plot_figures/figure_{Path(filename).parent.name}_30epochs.png')
@@ -261,9 +283,9 @@ def plot_learnable_inhibition_strengths():
     print(' ')
 
 if __name__ == '__main__':
-    # plot_mCE_versus_clean_error()
+    plot_mCE_versus_clean_error()
     # plot_shot_noise_corruptions_cifar_10()
     # plot_push_pull_kernels()
     # plot_fourier_analysis_of_pushpull_filters()
-    plot_learnable_inhibition_strengths()
+    # plot_learnable_inhibition_strengths()
     print('Run finished!')
