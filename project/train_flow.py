@@ -34,7 +34,6 @@ def parse_args():
                              "Note - suffix is valid only for ImageNet variants")
     parser.add_argument('--ckpt', type=str, default=None, help='ckpt for the model to be trained based on '
                                                                '"training_type". Training to continue from this state.')
-    parser.add_argument('--use-grayscale', action=argparse.BooleanOptionalAction, default=False)
 
     # Pytorch lightning args
     parser.add_argument('--logs_dir', required=True, type=str,

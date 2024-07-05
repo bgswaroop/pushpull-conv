@@ -1,5 +1,6 @@
 from .alexnet import AlexNet
 from .convnet import ConvNet
+from .convnext import convnext_tiny, convnext_small, convnext_base, convnext_large, convnext_xlarge
 from .efficientnet import EfficientNet
 from .resnet import (resnet18, resnet34, resnet50, resnet101, resnet152,
                      resnext50_32x4d, resnext101_32x8d, resnext101_64x4d)
@@ -8,9 +9,11 @@ from .resnet_vasconcelos_etal import resnet50 as vasconcelos_resnet50
 from .resnet_strisciuglio_etal import resnet50 as strisciuglio_resnet50
 
 __all__ = (
-    'AlexNet', 'ConvNet',
-    'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152',
+    'AlexNet',
+    'ConvNet',
+    'convnext_tiny', ''
     'EfficientNet',
+    'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152',
     'resnext50_32x4d', 'resnext101_32x8d', 'resnext101_64x4d',
     'vasconcelos_resnet50', 'zhang_resnet50', 'strisciuglio_resnet50',
     'get_classifier'
@@ -28,6 +31,13 @@ def efficientnet_wrapper(args):
     return net
 
 
+def convnext_wrapper(args):
+    if args.model == 'convnext_tiny':
+        return convnext_tiny(args)
+    else:
+        ValueError('Other ConvNext models need to be implemented')
+
+
 def get_classifier(args):
     if args.model == 'ConvNet':
         model = ConvNet(args)
@@ -41,6 +51,8 @@ def get_classifier(args):
         model = resnet50(args)
     elif 'efficientnet' in args.model:
         model = efficientnet_wrapper(args)
+    elif 'convnext' in args.model:
+        model = convnext_wrapper(args)
     elif args.model == 'zhang_resnet50':
         model = zhang_resnet50(args)
     elif args.model == 'vasconcelos_resnet50':
