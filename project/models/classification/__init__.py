@@ -1,5 +1,6 @@
 from .alexnet import AlexNet
 from .convnet import ConvNet
+from .efficientnet import EfficientNet
 from .resnet import (resnet18, resnet34, resnet50, resnet101, resnet152,
                      resnext50_32x4d, resnext101_32x8d, resnext101_64x4d)
 from .resnet_zhang_ICML2019 import resnet50 as zhang_resnet50
@@ -9,10 +10,22 @@ from .resnet_strisciuglio_etal import resnet50 as strisciuglio_resnet50
 __all__ = (
     'AlexNet', 'ConvNet',
     'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152',
+    'EfficientNet',
     'resnext50_32x4d', 'resnext101_32x8d', 'resnext101_64x4d',
     'vasconcelos_resnet50', 'zhang_resnet50', 'strisciuglio_resnet50',
     'get_classifier'
 )
+
+
+def efficientnet_wrapper(args):
+    net = EfficientNet.from_name(args.model,
+                                 lightning_args=args,
+                                 use_push_pull=args.use_push_pull,
+                                 pp_avg_kernel_size=args.avg_kernel_size,
+                                 pull_inhibition=args.pull_inhibition_strength,
+                                 trainable_pull_inhibition=args.trainable_pull_inhibition,
+                                 num_classes=args.num_classes)
+    return net
 
 
 def get_classifier(args):
@@ -26,6 +39,8 @@ def get_classifier(args):
         model = resnet34(args)
     elif args.model == 'resnet50':
         model = resnet50(args)
+    elif 'efficientnet' in args.model:
+        model = efficientnet_wrapper(args)
     elif args.model == 'zhang_resnet50':
         model = zhang_resnet50(args)
     elif args.model == 'vasconcelos_resnet50':

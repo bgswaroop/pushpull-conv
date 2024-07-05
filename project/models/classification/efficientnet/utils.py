@@ -41,6 +41,11 @@ GlobalParams = collections.namedtuple('GlobalParams', [
     'num_classes', 'batch_norm_momentum', 'batch_norm_epsilon',
     'drop_connect_rate', 'depth_divisor', 'min_depth', 'include_top'])
 
+PushPullParams = collections.namedtuple('PushPullParams', [
+    'use_push_pull', 'num_push_pull_layers', 'avg_kernel_size',
+    'pull_inhibition_strength', 'trainable_pull_inhibition'
+])
+
 # Parameters for an individual model block
 BlockArgs = collections.namedtuple('BlockArgs', [
     'num_repeat', 'kernel_size', 'stride', 'expand_ratio',
@@ -49,6 +54,7 @@ BlockArgs = collections.namedtuple('BlockArgs', [
 # Set GlobalParams and BlockArgs's defaults
 GlobalParams.__new__.__defaults__ = (None,) * len(GlobalParams._fields)
 BlockArgs.__new__.__defaults__ = (None,) * len(BlockArgs._fields)
+PushPullParams.__new__.__defaults__ = (None,) * len(PushPullParams._fields)
 
 # Swish activation function
 if hasattr(nn, 'SiLU'):

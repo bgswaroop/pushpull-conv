@@ -19,9 +19,11 @@ from .utils import (
     load_pretrained_weights,
     Swish,
     MemoryEfficientSwish,
-    calculate_output_image_size
+    calculate_output_image_size,
+    PushPullParams
 )
-
+from ..base_net import BaseNet
+from ...utils.push_pull_unit import PushPullConv2DUnit
 
 VALID_MODELS = (
     'efficientnet-b0', 'efficientnet-b1', 'efficientnet-b2', 'efficientnet-b3',
@@ -140,7 +142,7 @@ class MBConvBlock(nn.Module):
         self._swish = MemoryEfficientSwish() if memory_efficient else Swish()
 
 
-class EfficientNet(nn.Module):
+class EfficientNet(BaseNet):
     """EfficientNet model.
        Most easily loaded with the .from_name or .from_pretrained methods.
 
@@ -152,12 +154,14 @@ class EfficientNet(nn.Module):
         [1] https://arxiv.org/abs/1905.11946 (EfficientNet)
     """
 
-    def __init__(self, blocks_args=None, global_params=None):
+    def __init__(self, blocks_args=None, global_params=None, push_pull_params=None, lightning_args=None):
         super().__init__()
+        self.save_hyperparameters(lightning_args)
         assert isinstance(blocks_args, list), 'blocks_args should be a list'
         assert len(blocks_args) > 0, 'block args must be greater than 0'
         self._global_params = global_params
         self._blocks_args = blocks_args
+        self._pp_params = push_pull_params
 
         # Batch norm parameters
         bn_mom = 1 - self._global_params.batch_norm_momentum
@@ -170,7 +174,17 @@ class EfficientNet(nn.Module):
         # Stem
         in_channels = 3  # rgb
         out_channels = round_filters(32, self._global_params)  # number of output channels
-        self._conv_stem = Conv2d(in_channels, out_channels, kernel_size=3, stride=2, bias=False)
+        if self._pp_params.use_push_pull:
+            self._conv_stem = PushPullConv2DUnit(in_channels, out_channels,
+                                            kernel_size=(3, 3),
+                                            avg_kernel_size=self._pp_params.avg_kernel_size,
+                                            pull_inhibition_strength=self._pp_params.pull_inhibition_strength,
+                                            trainable_pull_inhibition=self._pp_params.trainable_pull_inhibition,
+                                            stride=2, padding=1, bias=False)
+        else:
+            self._conv_stem = Conv2d(in_channels, out_channels, kernel_size=3, stride=2, bias=False)
+
+
         self._bn0 = nn.BatchNorm2d(num_features=out_channels, momentum=bn_mom, eps=bn_eps)
         image_size = calculate_output_image_size(image_size, 2)
 
@@ -301,12 +315,19 @@ class EfficientNet(nn.Module):
         return x
 
     @classmethod
-    def from_name(cls, model_name, in_channels=3, **override_params):
+    def from_name(cls, model_name, in_channels=3, *, lightning_args=None, use_push_pull=False, pp_avg_kernel_size=3,
+                  pull_inhibition=1, trainable_pull_inhibition=True, **override_params):
         """Create an efficientnet model according to name.
 
         Args:
             model_name (str): Name for efficientnet.
             in_channels (int): Input data's channel number.
+            named_arguments (related to push-pull inhibition)
+                :param trainable_pull_inhibition:
+                :param pull_inhibition:
+                :param pp_num_layers:
+                :param pp_avg_kernel_size:
+                :param use_push_pull:
             override_params (other key word params):
                 Params to override model's global_params.
                 Optional key:
@@ -318,10 +339,16 @@ class EfficientNet(nn.Module):
 
         Returns:
             An efficientnet model.
+
         """
         cls._check_model_name_is_valid(model_name)
         blocks_args, global_params = get_model_params(model_name, override_params)
-        model = cls(blocks_args, global_params)
+        push_pull_params = PushPullParams(use_push_pull=use_push_pull,
+                                          avg_kernel_size=pp_avg_kernel_size,
+                                          num_push_pull_layers=in_channels,
+                                          trainable_pull_inhibition=trainable_pull_inhibition,
+                                          pull_inhibition_strength=pull_inhibition)
+        model = cls(blocks_args, global_params, push_pull_params, lightning_args)
         model._change_in_channels(in_channels)
         return model
 
