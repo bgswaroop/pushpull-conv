@@ -22,9 +22,9 @@ fi
 
 # There are 96 CPU cores available on each node. Running 4 jobs in parallel ==> 24 cores for each job
 # When augmentation is set to prime, unable to use more than 2 workers (only for train), can use 12 workers for predict
-num_workers=8
+num_workers=12
 
-model="efficientnet-b0"
+model="convnext-tiny"
 experiment_name="${model}_${dataset_name}_${task}_onecycle"
 common_train_args="--augmentation none --accelerator gpu --img_size 224 --model ${model} --hash_length 64 --quantization_weight 1e-4 --num_workers ${num_workers} --batch_size 64 --max_epochs 50 --weight_decay 5e-5 --lr_base 5e-2 --task ${task} --logs_dir ${logs_dir} --experiment_name ${experiment_name} --dataset_dir ${dataset_dir} --dataset_name ${dataset_name}"
 base_dir="$logs_dir/$experiment_name"
@@ -37,23 +37,23 @@ export CUDA_LAUNCH_BLOCKING=1
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
 phase="eval"
-i=0
-#avg=-1
+#i=0
+##avg=-1
 #mkdir -p "${base_dir}/version_${i}"
 #nohup python ${train_script} --no-use_push_pull --logs_version ${i} ${common_train_args}  --devices "$((i%2))," > "${base_dir}/version_${i}/logs_train.out" 2>&1
-experiment_dir="$base_dir/${model}"
-mv "${base_dir}/version_${i}" "${experiment_dir}"
-nohup python ${predict_script} --no-use_push_pull --models_to_predict last --predict_model_logs_dir "${experiment_dir}" ${common_predict_args} --devices "$((i%2))," > "${experiment_dir}/logs_predict.out" 2>&1
-echo "${predict_script} --no-use_push_pull --models_to_predict last --predict_model_logs_dir ${experiment_dir} ${common_predict_args} --devices $((i%2)),"
-
-
-#i=1
-#avg=3
-#mkdir -p "${base_dir}/version_${i}"
-#python ${train_script} --avg_kernel_size ${avg} --trainable_pull_inhibition --logs_version ${i}  ${common_train_args} --devices "$((i%2))," > "${base_dir}/version_${i}/logs_trainß.out" 2>&1
-#experiment_dir="$base_dir/${model}_avg${avg}"
+#experiment_dir="$base_dir/${model}"
 #mv "${base_dir}/version_${i}" "${experiment_dir}"
-#python ${predict_script} --models_to_predict last --predict_model_logs_dir "${experiment_dir}" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} --devices "$((i%2))," > "${experiment_dir}/logs_predict.out" 2>&1
+#nohup python ${predict_script} --no-use_push_pull --models_to_predict last --predict_model_logs_dir "${experiment_dir}" ${common_predict_args} --devices "$((i%2))," > "${experiment_dir}/logs_predict.out" 2>&1
+#echo "${predict_script} --no-use_push_pull --models_to_predict last --predict_model_logs_dir ${experiment_dir} ${common_predict_args} --devices $((i%2)),"
+
+
+i=1
+avg=3
+#mkdir -p "${base_dir}/version_${i}"
+#python ${train_script} --avg_kernel_size ${avg} --trainable_pull_inhibition --logs_version ${i}  ${common_train_args} --devices "$((i%2))," --ckpt "${base_dir}/version_${i}/checkpoints/epoch=12-val_top1_acc=0.36-val_loss=3.02.ckpt" > "${base_dir}/version_${i}/logs_train2.out" 2>&1
+experiment_dir="$base_dir/${model}_avg${avg}"
+mv "${base_dir}/version_${i}" "${experiment_dir}"
+python ${predict_script} --models_to_predict last --predict_model_logs_dir "${experiment_dir}" ${common_predict_args} --baseline_model_logs_dir ${baseline_model_logs_dir} --devices "$((i%2))," > "${experiment_dir}/logs_predict.out" 2>&1
 
 
 

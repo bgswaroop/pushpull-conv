@@ -77,6 +77,7 @@ def parse_args():
                         help="'cifar10', 'imagenet100', 'imagenet200', 'imagenet'"
                              "or add a suffix '_20pc' for a 20 percent stratified training subset."
                              "'_20pc' is an example, can be any float [1.0, 99.0]")
+    parser.add_argument('--use-grayscale', action=argparse.BooleanOptionalAction, default=False)
 
     parser.add_argument('--corrupted_dataset_dir', default=r'/data/p288722/datasets/cifar/CIFAR-10-C-224x224', type=str)
     parser.add_argument('--corrupted_dataset_name', default='CIFAR-10-C-224x224',

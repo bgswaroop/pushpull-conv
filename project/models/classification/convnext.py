@@ -9,7 +9,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from timm.models.layers import trunc_normal_, DropPath
-from timm.models.registry import register_model
 
 from .base_net import BaseNet
 from ..utils.push_pull_unit import PushPullConv2DUnit
@@ -61,7 +60,6 @@ class ConvNeXt(BaseNet):
 
     Args:
         lightning_args (dict): Args for training recipe and also the args needed for push-pull convolutions
-        in_chans (int): Number of input image channels. Default: 3
         depths (tuple(int)): Number of blocks at each stage. Default: [3, 3, 9, 3]
         dims (int): Feature dimension at each stage. Default: [96, 192, 384, 768]
         drop_path_rate (float): Stochastic depth rate. Default: 0.
@@ -69,22 +67,23 @@ class ConvNeXt(BaseNet):
         head_init_scale (float): Init scaling value for classifier weights and biases. Default: 1.
     """
 
-    def __init__(self, lightning_args=None, in_chans=3,
+    def __init__(self, lightning_args=None,
                  depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], drop_path_rate=0.,
                  layer_scale_init_value=1e-6, head_init_scale=1.,
                  ):
         super().__init__()
-
+        self.save_hyperparameters(lightning_args)
         num_classes = lightning_args.num_classes
-        
+        in_chans = 1 if lightning_args.use_grayscale else 3
+
         self.downsample_layers = nn.ModuleList()  # stem and 3 intermediate downsampling conv layers
-        if self._pp_params.use_push_pull:
+        if self._hparams.use_push_pull:
             _conv_stem = PushPullConv2DUnit(in_chans, dims[0],
                                             kernel_size=(4, 4),
-                                            avg_kernel_size=self._pp_params.avg_kernel_size,
-                                            pull_inhibition_strength=self._pp_params.pull_inhibition_strength,
-                                            trainable_pull_inhibition=self._pp_params.trainable_pull_inhibition,
-                                            stride=4, padding=0, bias=True)
+                                            avg_kernel_size=self._hparams.avg_kernel_size,
+                                            pull_inhibition_strength=self._hparams.pull_inhibition_strength,
+                                            trainable_pull_inhibition=self._hparams.trainable_pull_inhibition,
+                                            stride=4, bias=True)
         else:
             _conv_stem = nn.Conv2d(in_chans, dims[0], kernel_size=4, stride=4)
 
@@ -121,7 +120,8 @@ class ConvNeXt(BaseNet):
     def _init_weights(self, m):
         if isinstance(m, (nn.Conv2d, nn.Linear)):
             trunc_normal_(m.weight, std=.02)
-            nn.init.constant_(m.bias, 0)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def forward_features(self, x):
         for i in range(4):
@@ -162,27 +162,22 @@ class LayerNorm(nn.Module):
             x = self.weight[:, None, None] * x + self.bias[:, None, None]
             return x
 
-@register_model
 def convnext_tiny(args, **kwargs):
     model = ConvNeXt(lightning_args=args, depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], **kwargs)
     return model
 
-@register_model
 def convnext_small(args, **kwargs):
     model = ConvNeXt(lightning_args=args, depths=[3, 3, 27, 3], dims=[96, 192, 384, 768], **kwargs)
     return model
 
-@register_model
 def convnext_base(args, **kwargs):
     model = ConvNeXt(lightning_args=args, depths=[3, 3, 27, 3], dims=[128, 256, 512, 1024], **kwargs)
     return model
 
-@register_model
 def convnext_large(args, **kwargs):
     model = ConvNeXt(lightning_args=args, depths=[3, 3, 27, 3], dims=[192, 384, 768, 1536], **kwargs)
     return model
 
-@register_model
 def convnext_xlarge(args, **kwargs):
     model = ConvNeXt(lightning_args=args, depths=[3, 3, 27, 3], dims=[256, 512, 1024, 2048], **kwargs)
     return model

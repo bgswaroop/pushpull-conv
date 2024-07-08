@@ -105,14 +105,18 @@ def plot_scores(experiments, all_scores, dataset_name, compile_scores_dir):
 
 
 def run_flow():
-    compile_scores_dir = Path(r'/home/guru/runtime_data/pushpull-conv-minmax_across_channels/resnet50_imagenet_classification_TrivialAugment')
+    compile_scores_dir = Path(r'/home/guru/runtime_data/pushpull-conv-minmax_across_channels/convnext-tiny_imagenet_classification_onecycle')
     dataset_name = 'imagenet-c'
-    baseline_exp_dir = '/home/guru/runtime_data/pushpull-conv-minmax_across_channels/resnet50_imagenet_classification_TrivialAugment/resnet50'
+    baseline_exp_dir = '/home/guru/runtime_data/pushpull-conv-minmax_across_channels/convnext-tiny_imagenet_classification_onecycle/convnext-tiny'
     experiments = [
-        'resnet50',
+
+        'convnext-tiny',
+        'convnext-tiny_avg3'
+
+        # 'resnet50',
         # 'resnet50_sigma2'
         # 'resnet50_avg0',
-        'resnet50_avg3',
+        # 'resnet50_avg3',
         # 'resnet50_avg5',
         # 'resnet50_inht_avg0',
         # 'resnet50_inht_avg3',
@@ -155,3 +159,4 @@ def run_flow():
 if __name__ == '__main__':
     run_flow()
     print('Run finished!')
+

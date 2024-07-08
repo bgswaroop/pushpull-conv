@@ -32,10 +32,11 @@ def efficientnet_wrapper(args):
 
 
 def convnext_wrapper(args):
-    if args.model == 'convnext_tiny':
-        return convnext_tiny(args)
+    if args.model == 'convnext-tiny':
+        net = convnext_tiny(args)
     else:
-        ValueError('Other ConvNext models need to be implemented')
+        raise ValueError('Other ConvNext models need to be implemented')
+    return net
 
 
 def get_classifier(args):
