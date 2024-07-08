@@ -420,6 +420,7 @@ class EfficientNet(BaseNet):
         Args:
             in_channels (int): Input data's channel number.
         """
+        # todo: PushPull variant needs to be added for the following scenario.
         if in_channels != 3:
             Conv2d = get_same_padding_conv2d(image_size=self._global_params.image_size)
             out_channels = round_filters(32, self._global_params)
