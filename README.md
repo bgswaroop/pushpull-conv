@@ -14,10 +14,10 @@ An example of the 15 types of corruption with 5 levels of severity is shown belo
 ![imagenet_c](resources/figure_imagenet_c.png)
 
 #### Experiments & Results
-Results from ImageNet are presented below. 
+Results on ImageNet are presented below. 
 For other datasets and models please refer to the [paper](link to be added).
-In the Table below, E is the top1 clean error, mCE is mean corruption error and R_net is net reduction in error rate
-when compared to the baseline. R_net is expressed as a percentage. (Refer to Sec. 5.2 for further details).
+In the Table below, **E** is the top1 clean error, **mCE** is mean corruption error and **R_net** is net reduction in error rate
+when compared to the baseline. R_net is expressed as a percentage, and accounts for both **E** and **mCE** (Refer to Sec. 5.2 in the [paper](link to be added) for further details).
 
 | Variants of baseline models |  E ↓  |  mCE↓ | R_net↑ |
 |:----------------------------|:-----:|------:|-------:|
