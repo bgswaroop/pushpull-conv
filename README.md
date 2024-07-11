@@ -1,3 +1,6 @@
+#### Quick Links
+- [ICPR Supplementary Material](https://github.com/bgswaroop/pushpull-conv/blob/main/resources/ICPR_Supplementary_Material.pdf)
+
 # PushPull Convolutions
 PushPull-Conv: Improving the robustness of traditional convolutional neural networks (ConvNets) against typical image corruptions, by a simple architectural change. Replace the first Conv layer with the PushPull-Conv unit to achieve robustness.  
 
@@ -6,7 +9,7 @@ We test our method on the following datasets: CIFAR-10, ImageNet-100, ImageNet-2
 The training of the ConvNets is performed on the clean images. 
 Evaluation is done on images with several types and severities of common image corruptions (CIFAR10-C and ImageNet-C; [hendrycks et. al](https://github.com/hendrycks/robustness)). In summary, there are 15 types of image corruption with 5 levels of severity for each kind. An example is shown below:
 
-#todo: add an image showing image corruption
+![imagenet_c](resources/figure_imagenet_c.png)
 
 ### Experiments
 The robustness of the PushPull Convolutions is evaluated on two different problems - image classification
