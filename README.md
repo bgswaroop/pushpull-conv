@@ -2,15 +2,18 @@
 #### Accepted at ICPR 2024
 #### Quick Links
 - [ICPR Supplementary Material](https://github.com/bgswaroop/pushpull-conv/blob/main/resources/ICPR_Supplementary_Material.pdf)
-- [pre-print on arXiv](https://arxiv.org/abs/2408.04077)
+- [arXiv pre-print](https://arxiv.org/abs/2408.04077)
+
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/pushpull-net-inhibition-driven-resnet-robust/domain-generalization-on-imagenet-c)](https://paperswithcode.com/sota/domain-generalization-on-imagenet-c?p=pushpull-net-inhibition-driven-resnet-robust)
 
 ### Paper Summary
-PushPull-Conv: Improving the robustness of traditional convolutional neural networks (ConvNets) against typical image corruptions, by a simple architectural change. 
-Replace the first Conv layer with the [PushPull-Conv unit](project/models/utils/push_pull_unit.py) to achieve robustness. The goal is to achieve robustness to unseen distributions during model learning.
+PushPull-Conv: Improving the robustness of traditional convolutional neural networks (ConvNets) against typical image corruptions, by a simple architectural change (biologically inspired). 
+Replace the first Conv layer with the [PushPull-Conv unit](project/models/utils/push_pull_unit.py) to achieve robustness. 
+The goal is to achieve robustness to certain unseen distributions during model learning.
 
 #### Dataset 
 Datasets used: CIFAR-10, ImageNet-100, ImageNet-200, and ImageNet-1k. 
-Models were trained on the clean images, and tested on corrupted images (CIFAR10-C and ImageNet-C; [hendrycks et. al](https://github.com/hendrycks/robustness)). 
+Models were trained on the clean images, and tested on corrupted versions (CIFAR10-C and ImageNet-C; [hendrycks et. al](https://github.com/hendrycks/robustness)). 
 An example of the 15 types of corruption with 5 levels of severity is shown below:
 ![imagenet_c](resources/figure_imagenet_c.png)
 
